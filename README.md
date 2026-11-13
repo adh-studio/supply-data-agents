@@ -4,8 +4,11 @@
 
 **La donnee validee devient de l'action.** Cinq automatisations posees au-dessus
 de l'entrepot analytique [supply-dbt-warehouse](https://github.com/adh-studio/supply-dbt-warehouse)
-(dbt + DuckDB) d'une enseigne de decoration et d'ameublement : alertes, self-service,
-rapports, garde de qualite et generation assistee, toujours avec un humain dans la boucle.
+(dbt + DuckDB) d'une societe d'import et de distribution de produits electroniques
+a Madagascar (prix en ariary, MGA) : alertes, self-service, rapports, garde de
+qualite et generation assistee, toujours avec un humain dans la boucle. La boucle
+est fermee par deux briques : **SupplyOps** (saisie operationnelle, seule a ecrire
+les seeds) et le module **pipeline** (build dbt + etat partage).
 
 Vitrine pour non-techniciens : https://adh-studio.github.io/supply-data-agents/
 
@@ -56,7 +59,7 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
 ```
 
 Le script cree `.venv`, installe `requirements.txt`, construit la base fixture et
-lance les 105 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
+lance les 193 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
 
 ## Les 5 modules, un exemple chacun
 
@@ -158,13 +161,68 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   `docs/rapport-hebdo.html` (plus `rapport.md` et `journal_qa.jsonl`, sorties
   historiques des modules). La base n'est jamais ecrite.
 - **Vues** : Dashboard (KPI + graphiques SVG faits main), Rapport hebdo,
-  Assistant (chat Q&A avec SQL affiche en toute transparence), Alertes rupture
-  (reappro suggere + depot outbox), Fiches produits (colonnes En attente /
-  Validees / Rejetees, approbation et rejet motives a la main), Sante des
-  donnees (diagnostics du gardien sur ses deux scenarios de demonstration).
+  Pipeline (dernier build dbt, historique des 20 derniers, bouton Rafraichir
+  l'entrepot, diagnostics du gardien en cas d'echec), Assistant (chat Q&A avec
+  SQL affiche en toute transparence), Alertes rupture (reappro suggere + depot
+  outbox), Fiches produits (colonnes En attente / Validees / Rejetees,
+  approbation et rejet motives a la main), Sante des donnees (diagnostics du
+  gardien sur ses deux scenarios de demonstration).
 - **Options d'URL** : `?theme=dark|light` force le theme au chargement,
   `?motion=0` coupe les animations (captures), `?q=...` pose une question
   a l'assistant.
+
+## La boucle fermee : SupplyOps, pipeline et build nocturne
+
+**Philosophie : l'operationnel ecrit, l'analytique lit.** SupplyOps est le seul
+point d'ecriture des seeds CSV du repo dbt ; SupplySense ne fait que lire
+l'entrepot construit. Jamais l'inverse.
+
+### SupplyOps : la plateforme de saisie (port 4310)
+
+```bash
+python -m supplyops               # -> http://127.0.0.1:4310
+```
+
+Meme ADN que SupplySense (stdlib + SPA vanilla, zero framework) mais cote
+ecriture : catalogue produits (creation, prix, familles du contrat dbt),
+inventaire, ventes, lots d'import et receptions. Chaque ecriture passe par
+`supplyops/magasin.py` : validation stricte (familles du `schema.yml`,
+references existantes, entiers positifs, dates ISO), fins de ligne CRLF des
+seeds preservees a l'octet pres, ecriture atomique (fichier temporaire puis
+rename). Le retrait d'un produit est refuse s'il a des ventes ou des lots :
+l'historique commercial ne se reecrit pas. La vue Publication montre les
+saisies en attente et lance le build (`POST /api/publier`, 409 si un build
+est deja en cours).
+
+### pipeline : le build dbt orchestre
+
+```bash
+python -m pipeline                       # build manuel
+python -m pipeline --declencheur nocturne
+python -m pipeline --etat                # etat du dernier build, sans rien lancer
+```
+
+Le module pose un verrou (`.pipeline.lock` dans le repo dbt, refus des builds
+concurrents), lance `.venv/bin/dbt build` du repo designe par `DBT_DIR`
+(defaut `../supply-dbt-warehouse`), parse `target/run_results.json` et ecrit
+`etat_build.json` (statut, pass/fail/total, duree, declencheur, historique des
+20 derniers builds) de facon atomique. En cas d'echec, le gardien de qualite
+depose un diagnostic lisible dans `outbox/`. Code de sortie 0/1.
+
+### Le build nocturne (launchd)
+
+Un LaunchAgent macOS relance le build chaque nuit a 2 h 30 pour que l'entrepot
+reflete les saisies de la veille meme sans publication manuelle :
+
+```bash
+cp docs/com.supply.pipeline.nocturne.plist ~/Library/LaunchAgents/
+# adapter les deux chemins absolus du plist a votre machine, puis :
+launchctl load ~/Library/LaunchAgents/com.supply.pipeline.nocturne.plist
+launchctl list | grep com.supply.pipeline.nocturne
+```
+
+Le plist est le seul endroit ou un chemin absolu est tolere : tout le code
+passe par `DBT_DIR` et des chemins relatifs au repo.
 
 ## Lien avec le role de Product Owner Data et IA
 
@@ -180,8 +238,9 @@ Ce repo est volontairement petit, mais chaque module incarne un reflexe produit 
   repli deterministe. L'automatisation ne depend pas de la disponibilite d'un LLM.
 - **Observable et auditable** : journal d'audit du self-service, outbox archivee des
   alertes, surveillance anti-echec dans le workflow n8n, code de sortie exploitable.
-- **Testable et livrable** : 105 tests sur base fixture, CI sans secret, un script
-  unique (`run_e2e.sh`) identique en local et en CI.
+- **Testable et livrable** : 193 tests sur base fixture et copies temporaires de
+  seeds (jamais de vrai `dbt build` ni de reseau dans pytest), CI sans secret,
+  un script unique (`run_e2e.sh`) identique en local et en CI.
 
 ## Brancher un vrai Slack / n8n
 
@@ -223,10 +282,12 @@ agent_qa/            module 2 : self-service question -> SQL garde -> reponse
 rapport_hebdo/       module 3 : rapport hebdomadaire (markdown + HTML)
 gardien_qualite/     module 4 : diagnostic des tests dbt en echec
 fiches_produits/     module 5 : fiches produits assistees + validation humaine
+pipeline/            build dbt orchestre : verrou, etat_build.json, diagnostic
+supplyops/           SupplyOps : plateforme de saisie (seule a ecrire les seeds)
 cockpit/             SupplySense : cockpit web local (stdlib, lecture seule)
 n8n/                 workflow n8n importable (alerte rupture)
-docs/                vitrine GitHub Pages + exemple de rapport genere
-tests/               105 tests pytest, tous sur la base fixture
+docs/                vitrine GitHub Pages + exemple de rapport + plist nocturne
+tests/               193 tests pytest : base fixture + copies temporaires de seeds
 run_e2e.sh           pipeline local = pipeline CI
 ```
 

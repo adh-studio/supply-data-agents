@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Build nocturne de l'entrepot : python -m pipeline, declencheur "nocturne".
+       Seul fichier du projet ou un chemin absolu est tolere : adapter les deux
+       chemins ci-dessous a votre machine avant launchctl load. -->
+  <key>Label</key>
+  <string>com.supply.pipeline.nocturne</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/wize/entretien-leaddata/projets/supply-data-agents/.venv/bin/python</string>
+    <string>-m</string>
+    <string>pipeline</string>
+    <string>--declencheur</string>
+    <string>nocturne</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/wize/entretien-leaddata/projets/supply-data-agents</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/supply-pipeline-nocturne.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/supply-pipeline-nocturne.log</string>
+</dict>
+</plist>

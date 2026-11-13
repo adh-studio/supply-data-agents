@@ -309,6 +309,58 @@ tbody tr:last-child td{border-bottom:none}
 .frise-detail{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;
   padding-top:11px;border-top:1px dashed var(--line2)}
 
+/* ============ notifications ============ */
+.notifwrap{position:relative}
+.notifbadge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:99px;
+  background:var(--t600);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;
+  padding:0 4px;border:2px solid var(--bg);box-shadow:0 2px 8px var(--glow);font-variant-numeric:tabular-nums}
+.notifpanel{position:absolute;top:44px;right:0;width:392px;max-width:88vw;max-height:min(560px,72vh);
+  overflow-y:auto;background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--sh-lg);z-index:40;padding:6px;animation:viewIn .18s ease both}
+.notifpanel .nph{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:9px 11px 8px;border-bottom:1px solid var(--line);position:sticky;top:-6px;z-index:2;
+  background:var(--card);margin:-6px -6px 4px;border-radius:var(--r-lg) var(--r-lg) 0 0}
+.notifpanel .nph b{font-size:12.5px;letter-spacing:-.1px}
+.notifitem{padding:11px 12px;border:1px solid var(--line);border-radius:12px;margin:7px 4px;background:var(--card)}
+.notifitem.nonlu{border-left:3px solid var(--t500);background:linear-gradient(90deg,var(--t50),var(--card) 45%)}
+[data-theme="dark"] .notifitem.nonlu{background:linear-gradient(90deg,rgba(217,101,49,.1),var(--card) 45%)}
+.notifitem.attente{border-left:3px solid var(--warn)}
+.notifitem.attente.nonlu{background:linear-gradient(90deg,#fef3c7,var(--card) 45%)}
+[data-theme="dark"] .notifitem.attente.nonlu{background:linear-gradient(90deg,rgba(245,158,11,.1),var(--card) 45%)}
+.nhead{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.ntitle{font-weight:750;font-size:12.5px;letter-spacing:-.1px}
+.ntitle.amber{color:#92400e}
+[data-theme="dark"] .ntitle.amber{color:#fcd34d}
+.ntime{margin-left:auto;color:var(--mut2);font-size:10.8px;white-space:nowrap}
+.nrow{margin-bottom:4px}
+.nliste{margin:7px 0 3px;padding-left:17px;font-size:11.9px;color:var(--ink2);line-height:1.5}
+.nliste li{margin:2.5px 0}
+.nliste li::marker{color:var(--t500)}
+.notifitem.attente .nliste li::marker{color:var(--warn)}
+.nimpact{margin-top:8px;background:var(--t50);border:1px solid var(--t200);border-radius:9px;
+  padding:8px 11px;font-size:11.8px;color:var(--t900);line-height:1.55}
+.nimpact b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--t700);margin-bottom:3px}
+[data-theme="dark"] .nimpact{background:rgba(217,101,49,.08);border-color:rgba(217,101,49,.25);color:var(--t200)}
+[data-theme="dark"] .nimpact b{color:var(--t300)}
+.nbtn{margin-top:8px;text-decoration:none}
+.nvide{color:var(--mut2);font-size:12px;text-align:center;padding:26px 18px;line-height:1.6}
+#ntoast{position:fixed;bottom:22px;right:22px;transform:translateY(16px);background:var(--ink);color:var(--bg);
+  padding:11px 17px;border-radius:12px;font-size:12.6px;font-weight:650;opacity:0;transition:all .25s;z-index:99;
+  pointer-events:none;box-shadow:0 14px 40px rgba(0,0,0,.3);display:flex;align-items:center;gap:9px;max-width:440px}
+#ntoast.show{opacity:1;transform:translateY(0)}
+#ntoast svg{width:15px;height:15px;flex:0 0 auto;color:var(--amber)}
+.bandeau{display:flex;align-items:flex-start;gap:10px;margin:0 0 15px;padding:11px 14px;border-radius:12px;
+  border:1px solid #fde68a;background:#fef3c7;color:#92400e;font-size:12.4px;line-height:1.55}
+.bandeau svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px}
+.bandeau b{font-weight:750}
+.bandeau a{color:#92400e;font-weight:700;margin-left:6px;white-space:nowrap}
+.bandeau .bclose{margin-left:auto;border:none;background:transparent;color:inherit;cursor:pointer;
+  font-size:13px;line-height:1;padding:2px 4px;border-radius:6px;opacity:.7}
+.bandeau .bclose:hover{opacity:1;background:rgba(146,64,14,.12)}
+[data-theme="dark"] .bandeau{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:#fcd34d}
+[data-theme="dark"] .bandeau a{color:#fcd34d}
+[data-theme="dark"] .bandeau .bclose:hover{background:rgba(245,158,11,.15)}
+
 /* ============ divers ============ */
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .empty{color:var(--mut2);text-align:center;padding:36px 12px;font-size:12.8px}

@@ -169,7 +169,7 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   gardien sur ses deux scenarios de demonstration).
 - **Options d'URL** : `?theme=dark|light` force le theme au chargement,
   `?motion=0` coupe les animations (captures), `?q=...` pose une question
-  a l'assistant.
+  a l'assistant, `?notifs=1` ouvre le panneau de notifications.
 
 ## La boucle fermee : SupplyOps, pipeline et build nocturne
 
@@ -208,6 +208,35 @@ concurrents), lance `.venv/bin/dbt build` du repo designe par `DBT_DIR`
 `etat_build.json` (statut, pass/fail/total, duree, declencheur, historique des
 20 derniers builds) de facon atomique. En cas d'echec, le gardien de qualite
 depose un diagnostic lisible dans `outbox/`. Code de sortie 0/1.
+
+### Notifications : ce qui a change et ce que ca a entraine
+
+Quand une saisie est publiee, SupplySense previent, avec les chiffres :
+
+- **Journal des saisies** : chaque ecriture reussie de SupplyOps ajoute une
+  ligne a `journal_ops.jsonl` (dans le repo dbt, non versionne) : horodatage,
+  type (produit, inventaire, vente, lot, reception), action et resume en
+  francais avec les noms ("Produit cree : Webcam 2K autofocus (Audio,
+  95 000 MGA)"), `publie: false` tant qu'aucun build ne l'a emportee.
+- **Impact mesure par le pipeline** : avant et apres chaque build, le module
+  pipeline photographie les KPI cles de l'entrepot (taux de rupture, produits
+  en rupture, dormants, couverture mediane, nombre de produits, chiffre
+  d'affaires) via `lib.base.requete` (lecture seule, marts autorises). L'entree
+  d'historique de `etat_build.json` recoit un bloc `impact` : valeurs avant,
+  valeurs apres et phrases de deltas ("Taux de rupture : 6,48 % -> 6,35 %",
+  "1 nouveau produit dans l'entrepot : ..."). Apres un build reussi declenche
+  par SupplyOps ou SupplySense, les saisies en attente passent `publie: true`
+  et leurs resumes sont ranges dans `modifications`.
+- **Cloche SupplySense** : `GET /api/notifications` fusionne publications et
+  saisies en attente (30 evenements au plus, du plus recent au plus ancien).
+  La cloche de la topbar affiche le nombre de non-lus (dernier vu en
+  localStorage), le panneau detaille chaque publication (controles verts,
+  modifications publiees, bloc Impact) et les saisies en attente avec un lien
+  vers SupplyOps. Sondage toutes les 10 secondes : une nouvelle publication
+  pendant la session declenche un toast discret ("Entrepot mis a jour :
+  3 modifications publiees, 151 controles verts"). Le Dashboard affiche un
+  bandeau fermable des que des saisies attendent une publication : les
+  chiffres affiches ne les incluent pas encore.
 
 ### Le build nocturne (launchd)
 

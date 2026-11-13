@@ -33,7 +33,8 @@ const ICONS = {
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
   chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false,
-  pipeline: null, pipeSel: null };
+  pipeline: null, pipeSel: null,
+  notifs: [], nbEnAttente: 0, notifsPretes: false, bandeauFerme: false };
 
 const SUGGESTIONS = [
   'Quelle famille a la pire rotation ?',
@@ -106,6 +107,16 @@ function donut(items) {
 // ---------------- vues ----------------
 function vDashboard() {
   const v = el('div');
+  // Fraicheur des donnees : des saisies SupplyOps attendent une publication.
+  if (S.nbEnAttente > 0 && !S.bandeauFerme) {
+    const b = el('div', 'bandeau', `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5m0 3h.01"/></svg>
+      <div><b>Des saisies SupplyOps n'ont pas encore ete publiees</b> : les chiffres affiches ne les incluent pas.
+        <a href="http://127.0.0.1:4310/#publication" target="_blank" rel="noopener">Publier depuis SupplyOps ↗</a></div>
+      <button class="bclose" title="Fermer" aria-label="Fermer">✕</button>`);
+    b.querySelector('.bclose').onclick = () => { S.bandeauFerme = true; render(); };
+    v.appendChild(b);
+  }
   const d = S.kpis;
   if (!d) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
   const k = d.kpis;
@@ -636,6 +647,108 @@ function vPipeline() {
   return v;
 }
 
+// ---------------- notifications ----------------
+// Cloche de la topbar : publications SupplyOps (modifications + impact KPI)
+// et saisies en attente de publication. Non-lus = horodatage > dernier vu
+// (localStorage), sondage toutes les 10 s, toast discret sur une nouvelle
+// publication pendant la session.
+const NOTIF_CLE = 'ss-notif-vu';
+const notifsVuAvant = () => localStorage.getItem(NOTIF_CLE) || '';
+const notifsNonLus = () => S.notifs.filter(n => (n.horodatage || '') > notifsVuAvant()).length;
+let notifIdsConnus = null; // publications deja vues pendant la session
+
+const toastNotif = m => {
+  const t = $('#ntoast');
+  t.innerHTML = m;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 3500);
+};
+
+function majBadgeNotifs() {
+  const badge = $('#notifBadge');
+  const n = notifsNonLus();
+  badge.hidden = !n;
+  badge.textContent = n > 9 ? '9+' : String(n);
+  if (!$('#notifPanel').hidden) renderNotifPanel();
+}
+
+function notifItem(n) {
+  const nonLu = (n.horodatage || '') > notifsVuAvant();
+  if (n.type === 'attente') {
+    return `<div class="notifitem attente${nonLu ? ' nonlu' : ''}">
+      <div class="nhead"><span class="ntitle amber">${n.nb} saisie${n.nb > 1 ? 's' : ''} en attente de publication</span>
+        <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
+      <ul class="nliste">${(n.resumes || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
+      <a class="btn sm nbtn" href="http://127.0.0.1:4310/#publication" target="_blank" rel="noopener">Ouvrir SupplyOps ↗</a>
+    </div>`;
+  }
+  const ok = n.statut === 'succes';
+  const titre = n.declencheur === 'supplysense' ? 'Rafraichissement SupplySense' : 'Publication SupplyOps';
+  return `<div class="notifitem${nonLu ? ' nonlu' : ''}">
+    <div class="nhead"><span class="ntitle">${titre}</span><span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
+    <div class="nrow">${ok
+      ? `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${nfr(n.pass)} controles verts</span>`
+      : `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>build en echec · ${nfr(n.fail)} controle(s)</span>`}</div>
+    ${(n.modifications || []).length ? `<ul class="nliste">${n.modifications.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
+    ${(n.impact || []).length ? `<div class="nimpact"><b>Impact</b>${n.impact.map(p => `<div>${esc(p)}</div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function renderNotifPanel() {
+  const panel = $('#notifPanel');
+  panel.innerHTML = `<div class="nph"><b>Notifications</b>
+      <button class="btn ghost sm" id="notifLu">Tout marquer comme lu</button></div>
+    ${S.notifs.length ? S.notifs.map(notifItem).join('')
+      : '<div class="nvide">Aucune notification : publie une saisie depuis SupplyOps pour voir son impact ici.</div>'}`;
+  panel.querySelector('#notifLu').onclick = () => {
+    const plusRecent = S.notifs.reduce((m, n) => (n.horodatage || '') > m ? n.horodatage : m, '');
+    if (plusRecent) localStorage.setItem(NOTIF_CLE, plusRecent);
+    majBadgeNotifs();
+    renderNotifPanel();
+  };
+}
+
+async function chargerNotifications() {
+  let r;
+  try { r = await api('/notifications'); } catch (e) { return; }
+  if (!r.ok) return;
+  const premierChargement = notifIdsConnus === null;
+  if (premierChargement) notifIdsConnus = new Set();
+  const publications = r.notifications.filter(n => n.type === 'publication');
+  for (const n of publications) {
+    if (!premierChargement && !notifIdsConnus.has(n.id)) {
+      if (n.statut === 'succes') {
+        const nb = (n.modifications || []).length;
+        toastNotif(`${ICONS.check} Entrepot mis a jour : ${nb ? nb + ' modification' + (nb > 1 ? 's' : '') + ' publiee' + (nb > 1 ? 's' : '') + ', ' : ''}${nfr(n.pass)} controles verts`);
+      } else {
+        toastNotif(`⚠️ Publication en echec : ${nfr(n.fail)} controle(s) dbt au rouge`);
+      }
+    }
+    notifIdsConnus.add(n.id);
+  }
+  const avaitAttente = S.nbEnAttente;
+  S.notifs = r.notifications;
+  S.nbEnAttente = r.nb_en_attente || 0;
+  S.notifsPretes = true;
+  if (S.nbEnAttente !== avaitAttente) {
+    S.bandeauFerme = false;
+    if (S.page === 'dashboard') render();
+  }
+  majBadgeNotifs();
+}
+
+$('#notifBtn').onclick = e => {
+  e.stopPropagation();
+  const panel = $('#notifPanel');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) renderNotifPanel();
+};
+document.addEventListener('click', e => {
+  const panel = $('#notifPanel');
+  if (!panel.hidden && !e.target.closest('.notifwrap')) panel.hidden = true;
+});
+
 // ---------------- chargement ----------------
 async function chargerEtat() {
   try {
@@ -749,12 +862,16 @@ $('#view').innerHTML = `<div class="kpis">${'<div class="kpi"><div class="skel" 
 (async () => {
   await chargerEtat();
   chargerPipeline();
+  await chargerNotifications();
   setInterval(chargerEtat, 15000);
   setInterval(() => { if (!pipeTimer) chargerPipeline(); }, 15000);
+  setInterval(chargerNotifications, 10000);
   await CHARGEURS.dashboard();
   await chargerFiches();
   await aller(location.hash.slice(1) || 'dashboard');
   // ?q=... : pose automatiquement une question a l'assistant (demo, captures)
   const autoQ = params.get('q');
   if (autoQ && S.page === 'assistant') await poserQuestion(autoQ);
+  // ?notifs=1 : ouvre le panneau de notifications au chargement (demo, captures)
+  if (params.get('notifs') === '1') { $('#notifPanel').hidden = false; renderNotifPanel(); }
 })();

@@ -1,4 +1,12 @@
 // SupplySense v1 : SPA vanilla (zero framework), router par hash
+function libMode(m) {
+  if (m === 'claude_code') return 'moteur Claude Code';
+  if (m === 'llm') return 'moteur LLM (API)';
+  if (m === 'repli') return 'mode repli';
+  if (m === 'gabarit') return 'gabarit';
+  return m || '';
+}
+
 'use strict';
 const $ = s => document.querySelector(s);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -188,7 +196,7 @@ function vAssistant() {
       log.appendChild(el('div', 'bulle r', `
         ${big !== null ? `<span class="bigval">${big}${m.lignes.length > 1 ? ' <span style="font-size:13px;font-weight:650;color:var(--mut)">resultats</span>' : ''}</span>` : ''}
         ${esc(m.texte)}
-        <details><summary>SQL execute · ${nfr(m.duree_ms, 0)} ms · mode ${esc(m.mode)}</summary><pre>${esc(m.sql)}</pre></details>`));
+        <details><summary>SQL execute · ${nfr(m.duree_ms, 0)} ms · ${libMode(m.mode)}</summary><pre>${esc(m.sql)}</pre></details>`));
     }
   }
   b1.appendChild(log);
@@ -215,7 +223,7 @@ function vAssistant() {
       <td><b style="font-weight:680;font-size:12.3px">${esc(j.question)}</b>
         <div class="sub2">${esc((j.horodatage || '').slice(0, 16).replace('T', ' '))} · ${esc(j.utilisateur || '')}</div></td>
       <td style="text-align:right">${j.statut === 'ok' ? '<span class="chip ok">ok</span>' : '<span class="chip bad">erreur</span>'}
-        <div class="sub2" style="margin-top:3px">${esc(j.mode || '')}</div></td></tr>`).join('') + '</tbody>';
+        <div class="sub2" style="margin-top:3px">${libMode(j.mode)}</div></td></tr>`).join('') + '</tbody>';
     b2.appendChild(t);
   }
   right.appendChild(c2);
@@ -293,7 +301,7 @@ function ficheCard(f, zone) {
   const d = el('div', 'fiche');
   d.innerHTML = `
     <div class="frow" style="margin-bottom:6px"><span class="pill terra">${esc(f.id_produit)}</span>
-      <span class="pill">${esc(f.mode === 'llm' ? 'LLM' : 'gabarit')}</span>
+      <span class="pill">${libMode(f.mode)}</span>
       ${zone === 'validees' ? `<span class="chip ok" style="margin-left:auto">validee ${esc(f.approuvee_le || '')}</span>` : ''}
       ${zone === 'rejetees' ? `<span class="chip bad" style="margin-left:auto">rejetee ${esc(f.rejetee_le || '')}</span>` : ''}</div>
     <h4>${esc(f.titre || f.nom_produit)}</h4>

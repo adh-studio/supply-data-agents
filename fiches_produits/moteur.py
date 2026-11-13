@@ -256,15 +256,64 @@ def generer_fiche_llm(produit: dict) -> dict:
     }
 
 
+def _construire_prompt(produit: dict) -> str:
+    """Prompt de redaction partage par les modes llm et claude_code."""
+    matiere = extraire_matiere(produit["nom_produit"])
+    dimension = extraire_dimension(produit["nom_produit"])
+    return (
+        "Tu rediges une fiche produit e-commerce pour une enseigne de "
+        "decoration et d'ameublement. Respecte strictement ce ton de "
+        "marque :\n\n"
+        f"{_lire_ton_de_marque()}\n\n"
+        "Produit :\n"
+        f"- nom : {produit['nom_produit']}\n"
+        f"- famille : {produit.get('famille', '')}\n"
+        f"- matiere reperee dans le nom : {matiere or 'aucune'}\n"
+        f"- dimension reperee dans le nom : {dimension or 'aucune'}\n\n"
+        "Reponds UNIQUEMENT avec un objet JSON de la forme :\n"
+        '{"titre": "...", "description": "...", "points_forts": '
+        '["...", "...", "..."]}\n'
+        "La description fait entre 80 et 120 mots. Exactement 3 points "
+        "forts. Aucun prix, aucun pourcentage, aucun superlatif vide."
+    )
+
+
+def _extraire_fiche_json(brut: str) -> dict:
+    """Parse la reponse JSON d'un modele, balises de code tolerees."""
+    brut = re.sub(r"^```(?:json)?\s*|\s*```$", "", brut.strip())
+    fiche = json.loads(brut)
+    return {
+        "titre": fiche.get("titre", ""),
+        "description": fiche.get("description", ""),
+        "points_forts": list(fiche.get("points_forts", [])),
+    }
+
+
+def generer_fiche_claude_code(produit: dict) -> dict:
+    """Genere une fiche via la CLI claude (abonnement, sans cle API)."""
+    from lib import claude_code
+
+    return _extraire_fiche_json(claude_code.demander(_construire_prompt(produit)))
+
+
 def generer_fiche(produit: dict) -> tuple[dict, str]:
     """Genere une fiche et retourne (fiche, mode utilise).
 
-    Mode llm si la cle API est presente, repli gabarit deterministe sinon
-    ou en cas d'echec de l'appel.
+    Ordre des moteurs : llm si la cle API est presente, sinon la CLI claude
+    (abonnement) si disponible, sinon le gabarit deterministe. Tout echec
+    retombe sur le gabarit ; les garde-fous s'appliquent apres, quel que
+    soit le moteur.
     """
+    from lib import claude_code
+
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
             return generer_fiche_llm(produit), "llm"
+        except Exception:
+            return generer_fiche_gabarit(produit), "gabarit"
+    if claude_code.disponible():
+        try:
+            return generer_fiche_claude_code(produit), "claude_code"
         except Exception:
             return generer_fiche_gabarit(produit), "gabarit"
     return generer_fiche_gabarit(produit), "gabarit"

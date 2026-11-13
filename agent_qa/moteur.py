@@ -11,6 +11,10 @@ Deux modes de fonctionnement :
 2. Mode repli deterministe : sans cle, une bibliotheque de questions types
    reconnues par mots-cles fournit le SQL pre-ecrit et le gabarit de reponse.
 
+3. Mode Claude Code : si la question sort des types connus et que la CLI
+   claude est installee (abonnement, aucune cle API requise), le SQL est
+   genere par `claude -p` puis passe par la MEME garde avant execution.
+
 Chaque question traitee est journalisee dans journal_qa.jsonl (audit).
 """
 
@@ -23,6 +27,7 @@ import re
 import unicodedata
 
 from lib import base
+from lib import claude_code
 
 MODELE_LLM = "claude-sonnet-5"
 
@@ -354,6 +359,46 @@ def _creer_client():
 
 
 # ---------------------------------------------------------------------------
+# Mode Claude Code (claude -p, abonnement, sans cle API)
+# ---------------------------------------------------------------------------
+
+
+def _fmt_generique(lignes: list[dict]) -> str:
+    """Reponse en francais construite sans LLM a partir des lignes."""
+    if not lignes:
+        return "Aucun resultat pour cette question."
+    if len(lignes) == 1 and len(lignes[0]) == 1:
+        colonne, valeur = next(iter(lignes[0].items()))
+        libelle = colonne.replace("_", " ")
+        return f"Resultat ({libelle}) : {valeur}."
+    extraits = []
+    for ligne in lignes[:5]:
+        extraits.append(" · ".join(f"{c.replace('_', ' ')} : {v}" for c, v in ligne.items()))
+    texte = f"{len(lignes)} resultat(s)."
+    texte += " " + " | ".join(extraits)
+    if len(lignes) > 5:
+        texte += f" | ... et {len(lignes) - 5} autre(s) ligne(s)."
+    return texte
+
+
+def _repondre_claude_code(question: str) -> dict:
+    """Mode Claude Code : SQL par `claude -p`, garde obligatoire, reponse locale."""
+    prompt = PROMPT_SYSTEME_SQL + "\n\nQuestion : " + question
+    sql = _nettoyer_sql(claude_code.demander(prompt))
+
+    # Point de passage oblige : la garde SELECT only + allowlist.
+    lignes = base.requete(sql)
+
+    return {
+        "mode": "claude_code",
+        "question_type": None,
+        "sql": sql,
+        "lignes": lignes,
+        "reponse": _fmt_generique(lignes),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Journal d'audit
 # ---------------------------------------------------------------------------
 
@@ -386,20 +431,27 @@ def repondre(question: str, utilisateur: str = "anonyme", client=None) -> dict:
     mode_llm = client is not None or bool(os.environ.get("ANTHROPIC_API_KEY"))
 
     horodatage = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    mode_tente = "llm" if mode_llm else "repli"
     try:
         if mode_llm:
             if client is None:
                 client = _creer_client()
             resultat = _repondre_llm(question, client)
         else:
-            resultat = _repondre_repli(question)
+            try:
+                resultat = _repondre_repli(question)
+            except QuestionNonCompriseErreur:
+                if not claude_code.disponible():
+                    raise
+                mode_tente = "claude_code"
+                resultat = _repondre_claude_code(question)
     except Exception as erreur:
         _journaliser(
             {
                 "horodatage": horodatage,
                 "utilisateur": utilisateur,
                 "question": question,
-                "mode": "llm" if mode_llm else "repli",
+                "mode": mode_tente,
                 "statut": "erreur",
                 "erreur": f"{type(erreur).__name__}: {erreur}",
             }

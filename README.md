@@ -37,10 +37,16 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
   reproduisent exactement le schema des 5 marts reels (memes tables, memes
   colonnes, memes types). Aucune dependance au repo voisin ni au reseau : la
   CI est autonome.
-- **LLM optionnel** : les modules qui le peuvent utilisent `claude-sonnet-5`
-  (librairie `anthropic`) uniquement si `ANTHROPIC_API_KEY` est presente. Sinon,
-  chaque module bascule sur un mode deterministe de repli. Les tests n'appellent
-  jamais le reseau.
+- **IA en chaine de replis** (du plus riche au plus sobre), aucun appel reseau
+  dans les tests :
+  1. API Anthropic (`claude-sonnet-5`) si `ANTHROPIC_API_KEY` est presente ;
+  2. **Claude Code en mode headless** (`claude -p`, abonnement Claude, aucune cle
+     API ni facturation a l'usage) si la CLI `claude` est installee : l'assistant
+     repond alors aux questions libres hors des 8 types connus, et les fiches
+     produits sont redigees par le modele. Le SQL genere passe par la MEME garde
+     (SELECT unique, allowlist des 5 marts) avant toute execution. Reglages :
+     `CLAUDE_CODE_MODELE` (defaut `haiku`), `CLAUDE_CODE_DESACTIVE=1` pour couper ;
+  3. mode deterministe de repli (8 questions types, fiches gabarit).
 - **Python** : 3.11 a 3.13 (`run_e2e.sh` choisit l'interpreteur et refuse le reste).
 
 ## Demarrage rapide

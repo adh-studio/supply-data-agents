@@ -37,6 +37,7 @@ CHEMIN_TON_DE_MARQUE = os.path.join(DOSSIER_MODULE, "ton_de_marque.md")
 
 NOM_DOSSIER_A_VALIDER = "a_valider"
 NOM_DOSSIER_VALIDEES = "validees"
+NOM_DOSSIER_REJETEES = "rejetees"
 
 MODELE_LLM = "claude-sonnet-5"
 
@@ -372,3 +373,34 @@ def approuver(id_produit: str, racine: str = RACINE_PROJET) -> str:
         fichier.write(f"---\n{bloc_yaml}---\n{corps}")
     os.remove(chemin_attente)
     return chemin_validee
+
+
+def rejeter(id_produit: str, motif: str, racine: str = RACINE_PROJET) -> str:
+    """Rejet humain : bascule une fiche de a_valider/ vers rejetees/.
+
+    Change le statut en "rejetee", enregistre le motif et la date du rejet
+    dans l'en-tete YAML, deplace le fichier, et retourne le chemin de la
+    fiche rejetee.
+    """
+    motif = (motif or "").strip()
+    if not motif:
+        raise ValueError("Un motif de rejet est obligatoire.")
+    chemin_attente = os.path.join(
+        racine, NOM_DOSSIER_A_VALIDER, f"{id_produit}.md"
+    )
+    if not os.path.exists(chemin_attente):
+        raise FileNotFoundError(
+            f"Aucune fiche en attente pour {id_produit} : {chemin_attente}"
+        )
+    entete, corps = lire_fiche(chemin_attente)
+    entete["statut"] = "rejetee"
+    entete["motif_rejet"] = motif
+    entete["rejetee_le"] = datetime.date.today().isoformat()
+
+    dossier_rejetees = _dossier(racine, NOM_DOSSIER_REJETEES)
+    chemin_rejetee = os.path.join(dossier_rejetees, f"{id_produit}.md")
+    bloc_yaml = yaml.safe_dump(entete, allow_unicode=True, sort_keys=False)
+    with open(chemin_rejetee, "w", encoding="utf-8") as fichier:
+        fichier.write(f"---\n{bloc_yaml}---\n{corps}")
+    os.remove(chemin_attente)
+    return chemin_rejetee

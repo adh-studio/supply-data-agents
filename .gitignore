@@ -27,6 +27,7 @@ htmlcov/
 outbox/
 a_valider/
 validees/
+rejetees/
 journal_qa.jsonl
 /rapport.md
 

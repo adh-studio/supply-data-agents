@@ -25,6 +25,7 @@ API REST JSON :
   GET  /api/sante                     gardien_qualite sur ses deux fixtures
   GET  /api/pipeline                  etat du dernier build dbt + diagnostics
   POST /api/pipeline/rafraichir       build dbt en arriere-plan (409 si verrou)
+  GET  /api/notifications             publications SupplyOps + saisies en attente
 """
 
 from __future__ import annotations
@@ -361,6 +362,65 @@ def etat_pipeline() -> dict:
     }
 
 
+NB_NOTIFICATIONS_MAX = 30
+
+
+def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
+    """Fusionne publications SupplyOps et saisies en attente, recent d'abord.
+
+    Deux familles d'evenements, chacune avec un id stable derive de
+    l'horodatage (le front s'en sert pour compter les non-lus) :
+    - "publication" : les builds declenches par SupplyOps ou SupplySense
+      dans l'historique de etat_build.json, avec les modifications
+      publiees par le build et les phrases d'impact sur les KPI ;
+    - "attente" : un evenement unique qui agrege les lignes publie=false
+      de journal_ops.jsonl (les chiffres affiches ne les incluent pas).
+    """
+    evenements: list[dict] = []
+    etat = moteur_pipeline.lire_etat()
+    for entree in etat.get("historique") or []:
+        if entree.get("declencheur") not in moteur_pipeline.DECLENCHEURS_PUBLICATION:
+            continue
+        horodatage = entree.get("horodatage") or ""
+        evenements.append(
+            {
+                "id": "publication-" + horodatage,
+                "type": "publication",
+                "horodatage": horodatage,
+                "statut": entree.get("statut"),
+                "declencheur": entree.get("declencheur"),
+                "pass": int(entree.get("pass") or 0),
+                "fail": int(entree.get("fail") or 0),
+                "total": int(entree.get("total") or 0),
+                "modifications": list(entree.get("modifications") or []),
+                "impact": list((entree.get("impact") or {}).get("resume") or []),
+            }
+        )
+
+    en_attente = [
+        ligne
+        for ligne in moteur_pipeline.lire_journal_ops()
+        if not ligne.get("publie")
+    ]
+    if en_attente:
+        plus_recente = max(ligne.get("horodatage") or "" for ligne in en_attente)
+        evenements.append(
+            {
+                "id": "attente-" + plus_recente,
+                "type": "attente",
+                "horodatage": plus_recente,
+                "nb": len(en_attente),
+                "resumes": [ligne.get("resume") or "" for ligne in en_attente],
+            }
+        )
+
+    evenements.sort(key=lambda e: e.get("horodatage") or "", reverse=True)
+    return {
+        "notifications": evenements[:limite],
+        "nb_en_attente": len(en_attente),
+    }
+
+
 def demarrer_build() -> tuple[int, dict]:
     """Lance executer_build("supplysense") dans un thread, 409 si verrou."""
     if os.path.exists(moteur_pipeline.chemin_verrou()):
@@ -472,6 +532,8 @@ class Cockpit(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **analyser_sante()})
             if chemin == "/api/pipeline":
                 return self._json(200, {"ok": True, **etat_pipeline()})
+            if chemin == "/api/notifications":
+                return self._json(200, {"ok": True, **calculer_notifications()})
             if chemin == "/rapport-hebdo.html":
                 chemin_html = os.path.join(racine(), "docs", "rapport-hebdo.html")
                 if os.path.exists(chemin_html):

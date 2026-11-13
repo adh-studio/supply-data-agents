@@ -23,7 +23,11 @@ API REST JSON :
   POST   /api/publier                 lance le build dbt (409 si deja en cours)
 
 Chaque ecriture reussie incremente le compteur de modifications en
-attente (supplyops_etat.json, a cote des seeds). POST /api/publier
+attente (supplyops_etat.json, a cote des seeds) ET ajoute une ligne au
+journal des saisies journal_ops.jsonl (dans le repo dbt) : horodatage,
+type, action, resume en francais avec les noms, publie=false. C'est ce
+journal que le pipeline marque publie=true apres un build reussi, et que
+SupplySense lit pour notifier les saisies en attente. POST /api/publier
 delegue a pipeline.moteur.executer_build("supplyops") dans un thread et
 remet le compteur a zero en cas de succes.
 """
@@ -126,6 +130,54 @@ def marquer_modification(action: str, detail: str) -> dict:
     etat["journal"] = journal[:TAILLE_JOURNAL]
     _ecrire_etat_ops(etat)
     return etat
+
+
+# ---------------------------------------------------------------------------
+# Journal des saisies : une ligne JSON par ecriture reussie (repo dbt)
+# ---------------------------------------------------------------------------
+
+_verrou_journal_ops = threading.Lock()
+
+
+def chemin_journal_ops() -> str:
+    """journal_ops.jsonl, a cote du dossier seeds (donc dans le repo dbt)."""
+    return os.path.join(
+        os.path.dirname(magasin.dossier_seeds()),
+        moteur_pipeline.NOM_JOURNAL_OPS,
+    )
+
+
+def journaliser_ops(type_saisie: str, action: str, resume: str) -> dict:
+    """Ajoute une saisie au journal (append, publie=false), la retourne."""
+    ligne = {
+        "horodatage": datetime.datetime.now().isoformat(timespec="seconds"),
+        "type": type_saisie,
+        "action": action,
+        "resume": resume,
+        "publie": False,
+    }
+    with _verrou_journal_ops:
+        with open(chemin_journal_ops(), "a", encoding="utf-8") as fichier:
+            fichier.write(json.dumps(ligne, ensure_ascii=False) + "\n")
+    return ligne
+
+
+def _mga(valeur) -> str:
+    """Montant en ariary formate a la francaise : 95 000 MGA."""
+    return f"{int(valeur):,}".replace(",", " ") + " MGA"
+
+
+def _unites(quantite) -> str:
+    nombre = int(quantite)
+    return f"{nombre} unite" + ("s" if abs(nombre) > 1 else "")
+
+
+def _nom_reference(nom_table: str, colonne_id: str, valeur: str, colonne_nom: str) -> str:
+    """Nom lisible d'une reference (produit, entrepot...), l'id a defaut."""
+    for ligne in magasin.lire_table(nom_table):
+        if ligne.get(colonne_id) == valeur:
+            return ligne.get(colonne_nom) or valeur
+    return valeur
 
 
 def _remettre_compteur_a_zero() -> None:
@@ -392,6 +444,12 @@ class SupplyOps(BaseHTTPRequestHandler):
                     f"{resultat['produit']['id_produit']} "
                     f"{resultat['produit']['nom_produit']}",
                 )
+                produit = resultat["produit"]
+                journaliser_ops(
+                    "produit", "creation",
+                    f"Produit cree : {produit['nom_produit']} "
+                    f"({produit['famille']}, {_mga(produit['prix_vente'])})",
+                )
                 return self._json(201, {"ok": True, **resultat})
 
             correspondance = _REGEX_PRODUIT.match(chemin)
@@ -407,6 +465,11 @@ class SupplyOps(BaseHTTPRequestHandler):
                     "produit_modifie",
                     f"{id_produit} ({', '.join(sorted(champs))})",
                 )
+                journaliser_ops(
+                    "produit", "modification",
+                    f"Produit modifie : {resultat['produit']['nom_produit']} "
+                    f"({', '.join(sorted(champs))})",
+                )
                 return self._json(200, {"ok": True, **resultat})
 
             if chemin == "/api/inventaire":
@@ -421,6 +484,13 @@ class SupplyOps(BaseHTTPRequestHandler):
                     "inventaire_saisi",
                     f"{ligne['id_produit']} x {ligne['id_entrepot']} "
                     f"= {ligne['quantite_disponible']} u.",
+                )
+                journaliser_ops(
+                    "inventaire",
+                    "modification" if resultat["remplacee"] else "creation",
+                    f"Inventaire : {_unites(ligne['quantite_disponible'])} "
+                    f"de {_nom_reference('produits', 'id_produit', ligne['id_produit'], 'nom_produit')} "
+                    f"au {_nom_reference('entrepots', 'id_entrepot', ligne['id_entrepot'], 'nom_entrepot')}",
                 )
                 return self._json(201, {"ok": True, **resultat})
 
@@ -439,6 +509,12 @@ class SupplyOps(BaseHTTPRequestHandler):
                     f"{vente['id_vente']} : {vente['quantite']} x "
                     f"{vente['id_produit']} ({vente['canal']})",
                 )
+                journaliser_ops(
+                    "vente", "creation",
+                    f"Vente : {vente['quantite']} x "
+                    f"{_nom_reference('produits', 'id_produit', vente['id_produit'], 'nom_produit')} "
+                    f"({vente['canal']}, {_mga(vente['prix_unitaire'])} l'unite)",
+                )
                 return self._json(201, {"ok": True, **resultat})
 
             if chemin == "/api/lots":
@@ -456,6 +532,12 @@ class SupplyOps(BaseHTTPRequestHandler):
                     "lot_cree",
                     f"{ids} chez {donnees.get('id_fournisseur')}",
                 )
+                journaliser_ops(
+                    "lot", "creation",
+                    f"Lot d'import : {len(resultat['commandes'])} produit(s) "
+                    f"chez {_nom_reference('fournisseurs', 'id_fournisseur', str(donnees.get('id_fournisseur')), 'nom_fournisseur')} "
+                    f"({ids})",
+                )
                 return self._json(201, {"ok": True, **resultat})
 
             correspondance = _REGEX_RECEPTION.match(chemin)
@@ -470,6 +552,28 @@ class SupplyOps(BaseHTTPRequestHandler):
                     "reception_enregistree",
                     f"{resultat['reception']['id_reception']} sur "
                     f"{id_commande} ({resultat['statut_lot']})",
+                )
+                id_produit_lot = next(
+                    (
+                        c["id_produit"]
+                        for c in magasin.lire_table("commandes_achats")
+                        if c["id_commande"] == id_commande
+                    ),
+                    None,
+                )
+                nom_produit_lot = (
+                    _nom_reference(
+                        "produits", "id_produit", id_produit_lot, "nom_produit"
+                    )
+                    if id_produit_lot
+                    else id_commande
+                )
+                journaliser_ops(
+                    "reception", "creation",
+                    f"Reception : "
+                    f"{_unites(resultat['reception']['quantite_recue'])} "
+                    f"de {nom_produit_lot} sur le lot {id_commande} "
+                    f"({resultat['statut_lot']})",
                 )
                 return self._json(201, {"ok": True, **resultat})
 
@@ -494,8 +598,15 @@ class SupplyOps(BaseHTTPRequestHandler):
             correspondance = _REGEX_PRODUIT.match(chemin)
             if correspondance:
                 id_produit = correspondance.group(1)
+                nom_produit = _nom_reference(
+                    "produits", "id_produit", id_produit, "nom_produit"
+                )
                 resultat = magasin.retirer_produit(id_produit)
                 marquer_modification("produit_retire", id_produit)
+                journaliser_ops(
+                    "produit", "retrait",
+                    f"Produit retire : {nom_produit} ({id_produit})",
+                )
                 return self._json(200, {"ok": True, **resultat})
             return self._json(404, {"ok": False, "erreur": "route inconnue"})
         except magasin.ErreurValidation as erreur:

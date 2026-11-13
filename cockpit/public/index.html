@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SupplySense : cockpit supply-data-agents</title>
+<link rel="stylesheet" href="styles.css?v=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23c2552b'/><stop offset='1' stop-color='%23e8a23d'/></linearGradient></defs><rect width='100' height='100' rx='24' fill='url(%23g)'/><path d='M30 70V44l20-14 20 14v26H56V52h-12v18z' fill='white'/></svg>">
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17V9l8-5 8 5v8"/><path d="M4 17l8 5 8-5"/><path d="M12 22v-8"/><path d="M4 9l8 5 8-5"/></svg></div>
+      <div><b>SupplySense</b><small>Supply data agents</small></div>
+    </div>
+    <div class="navsec">Pilotage</div>
+    <nav id="nav1"></nav>
+    <div class="navsec">Agents</div>
+    <nav id="nav2"></nav>
+    <div class="sidecard">
+      <b><span class="dotlive" id="apiDot"></span>Entrepot analytique</b>
+      <span id="sideBase">connexion en cours</span>
+      <div class="ver">SupplySense v1 · branche sur supply-dbt-warehouse<br><span id="footMode"></span> · lecture seule</div>
+    </div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <div class="crumb" id="crumb">SupplySense<b id="pageTitle">Dashboard</b></div>
+      <div class="spacer"></div>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" placeholder="Filtrer les tables" autocomplete="off"></div>
+      <span class="badge-env" id="badgeEnv">Lecture seule · Entrepot</span>
+      <button class="iconbtn" id="themeBtn" title="Basculer clair / sombre"><svg id="themeIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg></button>
+      <div class="avatar">HA</div>
+    </div>
+    <div class="content" id="view"></div>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="app.js?v=1"></script>
+</body>
+</html>

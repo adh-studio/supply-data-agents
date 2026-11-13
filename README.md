@@ -50,7 +50,7 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
 ```
 
 Le script cree `.venv`, installe `requirements.txt`, construit la base fixture et
-lance les 86 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
+lance les 105 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
 
 ## Les 5 modules, un exemple chacun
 
@@ -129,6 +129,36 @@ TEST_MODE=1 python -m fiches_produits generer --limite 1
 
 Puis, apres relecture : `python -m fiches_produits approuver P018` deplace la fiche
 en `validees/`. Rien n'est publie sans ce geste humain.
+Le rejet motive existe aussi : `fiches_produits.moteur.rejeter(id, motif)` deplace
+la fiche en `rejetees/` avec le motif dans l'en-tete YAML.
+
+## SupplySense : le cockpit web
+
+Un cockpit local qui reunit les 5 agents dans une seule interface (famille
+StockSense / LeadSense, decline terracotta + blanc, mode sombre brun nuit) :
+
+```bash
+TEST_MODE=1 python -m cockpit     # base fixture
+python -m cockpit                 # entrepot reel (DUCKDB_PATH)
+# -> http://127.0.0.1:4300
+```
+
+- **Philosophie zero dependance** : serveur Python stdlib uniquement
+  (`http.server` + `json`), SPA vanilla (HTML + CSS + JS, zero framework,
+  zero npm). Rien a installer en plus de `requirements.txt`.
+- **Lecture seule par construction** : toutes les lectures passent par
+  `lib.base.requete` (SELECT uniquement, allowlist des 5 marts). Le serveur
+  n'ecrit que dans `outbox/`, `a_valider/`, `validees/`, `rejetees/` et
+  `docs/rapport-hebdo.html` (plus `rapport.md` et `journal_qa.jsonl`, sorties
+  historiques des modules). La base n'est jamais ecrite.
+- **Vues** : Dashboard (KPI + graphiques SVG faits main), Rapport hebdo,
+  Assistant (chat Q&A avec SQL affiche en toute transparence), Alertes rupture
+  (reappro suggere + depot outbox), Fiches produits (colonnes En attente /
+  Validees / Rejetees, approbation et rejet motives a la main), Sante des
+  donnees (diagnostics du gardien sur ses deux scenarios de demonstration).
+- **Options d'URL** : `?theme=dark|light` force le theme au chargement,
+  `?motion=0` coupe les animations (captures), `?q=...` pose une question
+  a l'assistant.
 
 ## Lien avec le role de Product Owner Data et IA
 
@@ -144,7 +174,7 @@ Ce repo est volontairement petit, mais chaque module incarne un reflexe produit 
   repli deterministe. L'automatisation ne depend pas de la disponibilite d'un LLM.
 - **Observable et auditable** : journal d'audit du self-service, outbox archivee des
   alertes, surveillance anti-echec dans le workflow n8n, code de sortie exploitable.
-- **Testable et livrable** : 86 tests sur base fixture, CI sans secret, un script
+- **Testable et livrable** : 105 tests sur base fixture, CI sans secret, un script
   unique (`run_e2e.sh`) identique en local et en CI.
 
 ## Brancher un vrai Slack / n8n
@@ -187,9 +217,10 @@ agent_qa/            module 2 : self-service question -> SQL garde -> reponse
 rapport_hebdo/       module 3 : rapport hebdomadaire (markdown + HTML)
 gardien_qualite/     module 4 : diagnostic des tests dbt en echec
 fiches_produits/     module 5 : fiches produits assistees + validation humaine
+cockpit/             SupplySense : cockpit web local (stdlib, lecture seule)
 n8n/                 workflow n8n importable (alerte rupture)
 docs/                vitrine GitHub Pages + exemple de rapport genere
-tests/               86 tests pytest, tous sur la base fixture
+tests/               105 tests pytest, tous sur la base fixture
 run_e2e.sh           pipeline local = pipeline CI
 ```
 

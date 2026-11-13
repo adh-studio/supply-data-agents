@@ -113,6 +113,7 @@
     padding: 3px 10px;
   }
   .b-bleu   { background: var(--accent-doux); color: var(--accent); }
+  .b-terra  { background: #f8e4d8; color: #c2552b; }
   .b-vert   { background: var(--vert-doux);   color: var(--vert); }
   .b-ambre  { background: var(--ambre-doux);  color: var(--ambre); }
   .b-violet { background: var(--violet-doux); color: var(--violet); }
@@ -226,7 +227,7 @@
       Chaque module ci-dessous part d'un probleme metier concret, se declenche tout seul
       (planification ou evenement), s'appuie uniquement sur les marts valides par les tests dbt,
       et produit une sortie directement utilisable : un message Slack, une reponse chiffree,
-      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (86 tests) et
+      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (105 tests) et
       fonctionne sans cle d'API grace a des modes de repli deterministes.
     </div>
 
@@ -397,11 +398,46 @@
       <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/fiches_produits">Voir le module fiches_produits</a>
     </section>
 
+    <!-- Module 6 : SupplySense, le cockpit -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-terra">&#128200;</div>
+        <h2>SupplySense, le cockpit web</h2>
+        <span class="badge b-terra">Interface unifiee</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> cinq agents en ligne de commande, c'est puissant mais
+        invisible pour un non-technicien. Un cockpit unique rend l'ensemble pilotable :
+        KPI, assistant, alertes, validation des fiches et sante des donnees au meme endroit.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Demarrage</div>
+          <code>python -m cockpit</code> puis http://127.0.0.1:4300. Serveur Python
+          stdlib + SPA vanilla : zero dependance en plus du repo, zero npm.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Garanties</div>
+          Lecture seule par construction (toutes les requetes passent par la garde SQL),
+          ecritures limitees a l'outbox, aux zones de validation des fiches et au rapport.
+          Badge permanent "Lecture seule" dans l'interface.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Dashboard KPI + graphiques</span><span class="f">&rarr;</span>
+        <span class="etape">Assistant (SQL affiche)</span><span class="f">&rarr;</span>
+        <span class="etape">Alertes rupture</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Fiches : approuver / rejeter</span><span class="f">&rarr;</span>
+        <span class="etape">Sante des donnees</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/cockpit">Voir le cockpit</a>
+    </section>
+
     <div class="intro">
       <strong>Ce que ce repo demontre cote produit :</strong> partir du probleme metier et non
       de la technologie, choisir le bon declencheur, mettre des garde-fous avant l'IA
       (lecture seule, allowlist SQL, validation humaine), prevoir un mode degrade sans LLM,
-      et rendre chaque automatisation testable et observable. 86 tests automatises tournent
+      et rendre chaque automatisation testable et observable. 105 tests automatises tournent
       a chaque modification, sans secret ni reseau.
     </div>
 

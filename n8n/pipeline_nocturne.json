@@ -1,0 +1,101 @@
+{
+  "name": "Build nocturne de l'entrepot - 2h30",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a1f6c2d4-1111-4a7e-9c3b-pipeline00001",
+      "name": "Declencheur nocturne 2h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-420, 0]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/supply-data-agents && .venv/bin/python -m pipeline --declencheur nocturne; echo CODE_SORTIE=$?"
+      },
+      "id": "b2e7d3e5-2222-4b8f-8d4c-pipeline00002",
+      "name": "Build dbt + 151 controles",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-180, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.stdout }}",
+              "rightValue": "CODE_SORTIE=0",
+              "operator": { "type": "string", "operation": "contains" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c3f8e4f6-3333-4c9a-9e5d-pipeline00003",
+      "name": "Build reussi ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [60, 0]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "mode": "name", "value": "#supply-pipeline" },
+        "text": "=Entrepot a jour cette nuit : build dbt reussi, 151 controles verts. Dashboard : http://votre-hote:4300"
+      },
+      "id": "d4a9f5a7-4444-4dab-af6e-pipeline00004",
+      "name": "Notification succes",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [300, -110],
+      "credentials": {
+        "slackApi": { "id": "REMPLACER_PAR_VOS_CREDENTIALS", "name": "Slack - a configurer" }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "mode": "name", "value": "#supply-incidents" },
+        "text": "=ECHEC du build nocturne de l'entrepot. Un controle qualite a refuse les donnees : le dashboard reste sur les chiffres de la veille. Diagnostic du gardien depose dans outbox/ : {{ $json.stdout }}"
+      },
+      "id": "e5bafb08-5555-4ebc-bf7f-pipeline00005",
+      "name": "Alerte echec + diagnostic",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [300, 110],
+      "credentials": {
+        "slackApi": { "id": "REMPLACER_PAR_VOS_CREDENTIALS", "name": "Slack - a configurer" }
+      }
+    }
+  ],
+  "connections": {
+    "Declencheur nocturne 2h30": {
+      "main": [[{ "node": "Build dbt + 151 controles", "type": "main", "index": 0 }]]
+    },
+    "Build dbt + 151 controles": {
+      "main": [
+        [{ "node": "Build reussi ?", "type": "main", "index": 0 }],
+        [{ "node": "Alerte echec + diagnostic", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build reussi ?": {
+      "main": [
+        [{ "node": "Notification succes", "type": "main", "index": 0 }],
+        [{ "node": "Alerte echec + diagnostic", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

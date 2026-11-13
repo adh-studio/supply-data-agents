@@ -31,23 +31,27 @@ CHEMIN_JOURNAL_DEFAUT = os.path.join(base.RACINE_PROJET, "journal_qa.jsonl")
 SCHEMA_MARTS = """Tables disponibles (DuckDB, lecture seule) :
 
 1. supply_couverture_stock(id_produit, nom_produit, famille, id_entrepot,
-   stock_disponible, vente_moyenne_jour, couverture_jours,
+   nom_entrepot, date_dernier_inventaire, quantite_disponible,
+   quantite_vendue_90j, vente_moyenne_jour, couverture_jours,
    statut_couverture)  -- statut_couverture : rupture / sain / surstock / dormant
 
-2. supply_taux_rupture(famille, id_entrepot, date_jour,
-   nb_references_actives, nb_references_rupture, taux_rupture_pct)
+2. supply_taux_rupture(id_entrepot, nom_entrepot, famille,
+   nb_observations, nb_ruptures, taux_rupture)
+   -- taux_rupture : fraction entre 0 et 1
 
-3. supply_delais_fournisseurs(id_fournisseur, nom_fournisseur,
-   famille_principale, nb_commandes_periode, nb_commandes_a_temps,
-   nb_commandes_completes, delai_moyen_jours, delai_contractuel_jours,
-   taux_otif, date_derniere_reception)
+3. supply_delais_fournisseurs(id_fournisseur, nom_fournisseur, pays,
+   note_rse, delai_contractuel_jours, nb_commandes,
+   nb_commandes_receptionnees, delai_moyen_reel_jours, ecart_moyen_jours,
+   taux_service_otif)  -- taux_service_otif : fraction entre 0 et 1
 
 4. offre_marge_familles(famille, quantite_vendue, chiffre_affaires,
-   taux_marge, rotation_periode)
+   marge_brute, taux_marge, stock_moyen_unites, rotation_periode)
+   -- taux_marge : fraction entre 0 et 1
 
 5. offre_top_flop_produits(id_produit, nom_produit, famille,
-   quantite_vendue, chiffre_affaires, taux_marge, rang, type_classement)
-   -- type_classement : top / flop ; rang : 1 = premier du classement
+   quantite_vendue, chiffre_affaires, marge_brute, rang_ca, segment)
+   -- segment : top / flop / coeur_de_gamme / sans_vente ;
+   -- rang_ca : 1 = premier du classement par chiffre d'affaires
 """
 
 PROMPT_SYSTEME_SQL = (
@@ -121,7 +125,7 @@ def _fmt_couverture_moyenne(lignes: list[dict]) -> str:
 
 def _fmt_top_produits(lignes: list[dict]) -> str:
     detail = ", ".join(
-        f"{l['rang']}. {l['nom_produit']} ({l['chiffre_affaires']:.0f} euros)"
+        f"{l['rang_ca']}. {l['nom_produit']} ({l['chiffre_affaires']:.0f} euros)"
         for l in lignes
     )
     return f"Les {len(lignes)} meilleurs produits par classement sont : {detail}."
@@ -129,7 +133,7 @@ def _fmt_top_produits(lignes: list[dict]) -> str:
 
 def _fmt_flop_produits(lignes: list[dict]) -> str:
     detail = ", ".join(
-        f"{l['rang']}. {l['nom_produit']} ({l['quantite_vendue']} ventes)"
+        f"{l['rang_ca']}. {l['nom_produit']} ({l['quantite_vendue']} ventes)"
         for l in lignes
     )
     return f"Les {len(lignes)} produits les moins performants sont : {detail}."
@@ -221,29 +225,33 @@ QUESTIONS_TYPES: list[tuple[str, object, str, object]] = [
     (
         "meilleures_marges",
         _det_meilleures_marges,
-        "SELECT famille, taux_marge FROM offre_marge_familles "
+        "SELECT famille, ROUND(taux_marge * 100, 1) AS taux_marge "
+        "FROM offre_marge_familles "
         "ORDER BY taux_marge DESC LIMIT 3",
         _fmt_meilleures_marges,
     ),
     (
         "flop_produits",
         _det_flop_produits,
-        "SELECT rang, nom_produit, quantite_vendue FROM offre_top_flop_produits "
-        "WHERE type_classement = 'flop' ORDER BY rang LIMIT 5",
+        "SELECT rang_ca, nom_produit, quantite_vendue "
+        "FROM offre_top_flop_produits "
+        "WHERE segment = 'flop' ORDER BY rang_ca LIMIT 5",
         _fmt_flop_produits,
     ),
     (
         "top_produits",
         _det_top_produits,
-        "SELECT rang, nom_produit, chiffre_affaires FROM offre_top_flop_produits "
-        "WHERE type_classement = 'top' ORDER BY rang LIMIT 5",
+        "SELECT rang_ca, nom_produit, chiffre_affaires "
+        "FROM offre_top_flop_produits "
+        "WHERE segment = 'top' ORDER BY rang_ca LIMIT 5",
         _fmt_top_produits,
     ),
     (
         "otif_fournisseurs",
         _det_otif,
-        "SELECT nom_fournisseur, taux_otif FROM supply_delais_fournisseurs "
-        "ORDER BY taux_otif ASC LIMIT 3",
+        "SELECT nom_fournisseur, ROUND(taux_service_otif * 100, 1) AS taux_otif "
+        "FROM supply_delais_fournisseurs "
+        "ORDER BY taux_service_otif ASC LIMIT 3",
         _fmt_otif,
     ),
     (

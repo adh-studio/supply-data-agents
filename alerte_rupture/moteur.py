@@ -59,8 +59,8 @@ def recuperer_produits(inclure_surstock: bool = False) -> list[dict]:
     """
     statuts = "('rupture', 'surstock')" if inclure_surstock else "('rupture')"
     lignes = base.requete(
-        "SELECT id_produit, nom_produit, famille, id_entrepot, "
-        "stock_disponible, vente_moyenne_jour, couverture_jours, "
+        "SELECT id_produit, nom_produit, famille, id_entrepot, nom_entrepot, "
+        "quantite_disponible, vente_moyenne_jour, couverture_jours, "
         "statut_couverture "
         "FROM supply_couverture_stock "
         f"WHERE statut_couverture IN {statuts} "
@@ -108,9 +108,9 @@ def construire_message(produits: list[dict], date: datetime.date | None = None) 
         ]
         for p in ruptures:
             lignes_tableau.append(
-                f"| {p['nom_produit']} | {p['id_entrepot']} "
+                f"| {p['nom_produit']} | {p['nom_entrepot']} "
                 f"| {p['vente_moyenne_jour']:.1f} "
-                f"| {p['couverture_jours']:.1f} "
+                f"| {(p['couverture_jours'] or 0.0):.1f} "
                 f"| {p['quantite_reappro']} unites |"
             )
         blocs.append("\n".join(lignes_tableau))
@@ -121,7 +121,7 @@ def construire_message(produits: list[dict], date: datetime.date | None = None) 
         ]
         for p in ruptures:
             actions.append(
-                f"- {p['nom_produit']} ({p['id_entrepot']}) : "
+                f"- {p['nom_produit']} ({p['nom_entrepot']}) : "
                 f"commander {p['quantite_reappro']} unites"
             )
         blocs.append("\n".join(actions))
@@ -132,8 +132,8 @@ def construire_message(produits: list[dict], date: datetime.date | None = None) 
         ]
         for p in surstocks:
             lignes_surstock.append(
-                f"- {p['nom_produit']} ({p['id_entrepot']}) : "
-                f"{p['couverture_jours']:.0f} jours de couverture"
+                f"- {p['nom_produit']} ({p['nom_entrepot']}) : "
+                f"{(p['couverture_jours'] or 0.0):.0f} jours de couverture"
             )
         blocs.append("\n".join(lignes_surstock))
 

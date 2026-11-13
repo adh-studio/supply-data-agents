@@ -1,10 +1,23 @@
 """Construit la base DuckDB de test a partir des CSV du dossier fixtures.
 
-Chaque CSV correspond a un mart de l'entrepot reel (memes noms de tables,
-memes colonnes). Les colonnes se terminant par _offset sont des decalages
-en jours par rapport a aujourd'hui : elles sont converties en vraies dates
-au moment de la construction, pour que la base de test contienne toujours
-des dates recentes.
+Chaque CSV reproduit EXACTEMENT le schema d'un mart de l'entrepot reel
+supply-dbt-warehouse (memes noms de tables, memes colonnes, memes types) :
+
+- supply_couverture_stock : id_produit, nom_produit, famille, id_entrepot,
+  nom_entrepot, date_dernier_inventaire, quantite_disponible,
+  quantite_vendue_90j, vente_moyenne_jour, couverture_jours,
+  statut_couverture (rupture / sain / surstock / dormant) ;
+- supply_taux_rupture : id_entrepot, nom_entrepot, famille,
+  nb_observations, nb_ruptures, taux_rupture (fraction 0-1) ;
+- supply_delais_fournisseurs : id_fournisseur, nom_fournisseur, pays,
+  note_rse, delai_contractuel_jours, nb_commandes,
+  nb_commandes_receptionnees, delai_moyen_reel_jours, ecart_moyen_jours,
+  taux_service_otif (fraction 0-1) ;
+- offre_marge_familles : famille, quantite_vendue, chiffre_affaires,
+  marge_brute, taux_marge (fraction 0-1), stock_moyen_unites,
+  rotation_periode ;
+- offre_top_flop_produits : id_produit, nom_produit, famille,
+  quantite_vendue, chiffre_affaires, marge_brute, rang_ca, segment.
 
 Usage : python fixtures/construire_base.py
 """
@@ -18,23 +31,37 @@ import duckdb
 DOSSIER_FIXTURES = os.path.dirname(os.path.abspath(__file__))
 CHEMIN_BASE_TEST = os.path.join(DOSSIER_FIXTURES, "entrepot_test.duckdb")
 
-# Pour chaque mart : (nom du CSV, SQL de projection appliquee au CSV brut).
-# Les offsets de jours deviennent des dates relatives a CURRENT_DATE.
+# Pour chaque mart : (nom du CSV, projection typee appliquee au CSV brut).
+# Les types sont forces pour coller a ceux des marts reels.
 DEFINITIONS = {
     "supply_couverture_stock": (
         "supply_couverture_stock.csv",
-        "SELECT * FROM lecture",
+        """
+        SELECT
+            id_produit,
+            nom_produit,
+            famille,
+            id_entrepot,
+            nom_entrepot,
+            CAST(date_dernier_inventaire AS DATE) AS date_dernier_inventaire,
+            CAST(quantite_disponible AS INTEGER) AS quantite_disponible,
+            CAST(quantite_vendue_90j AS BIGINT) AS quantite_vendue_90j,
+            CAST(vente_moyenne_jour AS DOUBLE) AS vente_moyenne_jour,
+            CAST(couverture_jours AS DOUBLE) AS couverture_jours,
+            statut_couverture
+        FROM lecture
+        """,
     ),
     "supply_taux_rupture": (
         "supply_taux_rupture.csv",
         """
         SELECT
-            famille,
             id_entrepot,
-            CURRENT_DATE - CAST(date_jour_offset AS INTEGER) AS date_jour,
-            nb_references_actives,
-            nb_references_rupture,
-            taux_rupture_pct
+            nom_entrepot,
+            famille,
+            CAST(nb_observations AS BIGINT) AS nb_observations,
+            CAST(nb_ruptures AS BIGINT) AS nb_ruptures,
+            CAST(taux_rupture AS DOUBLE) AS taux_rupture
         FROM lecture
         """,
     ),
@@ -44,25 +71,46 @@ DEFINITIONS = {
         SELECT
             id_fournisseur,
             nom_fournisseur,
-            famille_principale,
-            nb_commandes_periode,
-            nb_commandes_a_temps,
-            nb_commandes_completes,
-            delai_moyen_jours,
-            delai_contractuel_jours,
-            taux_otif,
-            CURRENT_DATE - CAST(date_derniere_reception_offset AS INTEGER)
-                AS date_derniere_reception
+            pays,
+            note_rse,
+            CAST(delai_contractuel_jours AS INTEGER) AS delai_contractuel_jours,
+            CAST(nb_commandes AS BIGINT) AS nb_commandes,
+            CAST(nb_commandes_receptionnees AS BIGINT)
+                AS nb_commandes_receptionnees,
+            CAST(delai_moyen_reel_jours AS DOUBLE) AS delai_moyen_reel_jours,
+            CAST(ecart_moyen_jours AS DOUBLE) AS ecart_moyen_jours,
+            CAST(taux_service_otif AS DOUBLE) AS taux_service_otif
         FROM lecture
         """,
     ),
     "offre_marge_familles": (
         "offre_marge_familles.csv",
-        "SELECT * FROM lecture",
+        """
+        SELECT
+            famille,
+            CAST(quantite_vendue AS BIGINT) AS quantite_vendue,
+            CAST(chiffre_affaires AS DOUBLE) AS chiffre_affaires,
+            CAST(marge_brute AS DOUBLE) AS marge_brute,
+            CAST(taux_marge AS DOUBLE) AS taux_marge,
+            CAST(stock_moyen_unites AS DOUBLE) AS stock_moyen_unites,
+            CAST(rotation_periode AS DOUBLE) AS rotation_periode
+        FROM lecture
+        """,
     ),
     "offre_top_flop_produits": (
         "offre_top_flop_produits.csv",
-        "SELECT * FROM lecture",
+        """
+        SELECT
+            id_produit,
+            nom_produit,
+            famille,
+            CAST(quantite_vendue AS BIGINT) AS quantite_vendue,
+            CAST(chiffre_affaires AS DOUBLE) AS chiffre_affaires,
+            CAST(marge_brute AS DOUBLE) AS marge_brute,
+            CAST(rang_ca AS BIGINT) AS rang_ca,
+            segment
+        FROM lecture
+        """,
     ),
 }
 

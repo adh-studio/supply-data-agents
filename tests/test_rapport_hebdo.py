@@ -36,10 +36,10 @@ def _sans_horodatage(texte: str) -> str:
 class TestKpi:
     def test_taux_rupture_global(self, kpi):
         rupture = kpi["rupture"]
-        # Dernier jour : 5 ruptures sur 202 references actives.
-        assert rupture["nb_references_actives"] == 202
-        assert rupture["nb_references_rupture"] == 5
-        assert rupture["taux_global_pct"] == 2.48
+        # 141 ruptures observees sur 4320 observations : 3.26 %.
+        assert rupture["nb_observations"] == 4320
+        assert rupture["nb_ruptures"] == 141
+        assert rupture["taux_global_pct"] == 3.26
 
     def test_taux_rupture_par_entrepot(self, kpi):
         par_entrepot = {
@@ -47,12 +47,12 @@ class TestKpi:
             for entrepot in kpi["rupture"]["par_entrepot"]
         }
         assert set(par_entrepot) == {"E01", "E02"}
-        assert par_entrepot["E01"]["nb_references_actives"] == 114
-        assert par_entrepot["E01"]["nb_references_rupture"] == 3
-        assert par_entrepot["E01"]["taux_rupture_pct"] == 2.63
-        assert par_entrepot["E02"]["nb_references_actives"] == 88
-        assert par_entrepot["E02"]["nb_references_rupture"] == 2
-        assert par_entrepot["E02"]["taux_rupture_pct"] == 2.27
+        assert par_entrepot["E01"]["nb_observations"] == 2400
+        assert par_entrepot["E01"]["nb_ruptures"] == 93
+        assert par_entrepot["E01"]["taux_rupture_pct"] == 3.88
+        assert par_entrepot["E02"]["nb_observations"] == 1920
+        assert par_entrepot["E02"]["nb_ruptures"] == 48
+        assert par_entrepot["E02"]["taux_rupture_pct"] == 2.5
 
     def test_top_3_familles_par_marge(self, kpi):
         top = kpi["top_familles_marge"]
@@ -74,24 +74,27 @@ class TestKpi:
     def test_otif_moyen_et_pires_fournisseurs(self, kpi):
         otif = kpi["otif"]
         assert otif["nb_fournisseurs"] == 15
-        assert otif["moyen_pct"] == 82.94
+        assert otif["moyen_pct"] == pytest.approx(82.93, abs=0.01)
         assert [f["nom_fournisseur"] for f in otif["pires"]] == [
             "Tissages du Maroc",
             "Mobilier Atlas Export",
             "Metal Design Torino",
         ]
-        assert [f["taux_otif"] for f in otif["pires"]] == [41.7, 50.0, 60.0]
+        assert [f["taux_otif"] for f in otif["pires"]] == [41.67, 50.0, 60.0]
+        assert [f["pays"] for f in otif["pires"]] == ["Maroc", "Maroc", "Italie"]
 
     def test_produits_dormants(self, kpi):
         dormants = kpi["dormants"]
         assert dormants["nb"] == 3
-        # Tries par couverture decroissante.
+        # Tries par quantite disponible decroissante.
         assert [p["id_produit"] for p in dormants["produits"]] == [
             "P009",
             "P017",
             "P012",
         ]
-        assert dormants["produits"][0]["couverture_jours"] == 525.0
+        # Un produit dormant ne se vend plus : couverture non calculable.
+        assert dormants["produits"][0]["couverture_jours"] is None
+        assert dormants["produits"][0]["quantite_disponible"] == 210
         assert dormants["produits"][0]["nom_produit"] == "Tapis shaggy Como taupe"
 
 
@@ -109,10 +112,10 @@ class TestPuces:
     def test_regles_metier_appliquees(self, kpi, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         puces = moteur.generer_puces(kpi)
-        # Rupture a 2.48 % : sous le seuil de 5 %, pas d'alerte.
+        # Rupture a 3.26 % : sous le seuil de 5 %, pas d'alerte.
         assert "Disponibilite maitrisee" in puces[0]
-        assert "2.48 %" in puces[0]
-        # OTIF moyen a 82.94 % : sous le seuil de 85 %, alerte avec le pire.
+        assert "3.26 %" in puces[0]
+        # OTIF moyen a 82.93 % : sous le seuil de 85 %, alerte avec le pire.
         assert "sous le seuil" in puces[1]
         assert "Tissages du Maroc" in puces[1]
         # Offre : meilleure marge et dormants.
@@ -166,8 +169,8 @@ class TestSorties:
         assert sum(1 for l in markdown.splitlines() if l.startswith("- ")) == 3
         # Tables markdown avec separateurs d'alignement.
         assert markdown.count("| --- |") >= 1
-        assert "| E01 | 114 | 3 | 2.63 % |" in markdown
-        assert "| Tissages du Maroc | Tapis | 41.7 % |" in markdown
+        assert "| E01 | 2400 | 93 | 3.88 % |" in markdown
+        assert "| Tissages du Maroc | Maroc | 41.67 % |" in markdown
         # Pas de tiret cadratin.
         assert "—" not in markdown
 
@@ -190,8 +193,8 @@ class TestSorties:
         assert "<style>" in html
         assert "<svg" in html
         # Valeurs cles visibles par un dirigeant.
-        assert "2.48 %" in html
-        assert "82.94 %" in html
+        assert "3.26 %" in html
+        assert "82.93 %" in html
         assert "Tapis shaggy Como taupe" in html
 
     def test_generer_rapport_ecrit_les_deux_fichiers(self, tmp_path, monkeypatch):

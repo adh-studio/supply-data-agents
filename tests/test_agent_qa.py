@@ -66,15 +66,17 @@ def test_produits_en_rupture():
 def test_couverture_moyenne():
     resultat = repondre("quelle est la couverture moyenne du stock ?")
     assert resultat["question_type"] == "couverture_moyenne"
-    assert resultat["lignes"][0]["couverture_moyenne"] == pytest.approx(85.2)
-    assert "85.2" in resultat["reponse"]
+    # Moyenne sur les 17 produits dont la couverture est calculable
+    # (les 3 dormants ont une couverture NULL) : 502.7 / 17 = 29.6.
+    assert resultat["lignes"][0]["couverture_moyenne"] == pytest.approx(29.6)
+    assert "29.6" in resultat["reponse"]
 
 
 def test_top_produits():
     resultat = repondre("quels sont les top produits en vente ?")
     assert resultat["question_type"] == "top_produits"
     assert resultat["lignes"][0]["nom_produit"] == "Coussin lin lave Mia ocre"
-    assert resultat["lignes"][0]["rang"] == 1
+    assert resultat["lignes"][0]["rang_ca"] == 1
     assert len(resultat["lignes"]) == 5
     assert "Coussin lin lave Mia ocre" in resultat["reponse"]
 
@@ -197,7 +199,7 @@ def test_llm_sql_passe_par_la_garde(monkeypatch):
 def test_llm_update_refuse():
     """Une requete UPDATE generee par le LLM est bloquee par la garde."""
     client = FauxClient(
-        ["UPDATE supply_couverture_stock SET stock_disponible = 0"]
+        ["UPDATE supply_couverture_stock SET quantite_disponible = 0"]
     )
     with pytest.raises(RequeteInterditeErreur):
         repondre("mets tous les stocks a zero", client=client)

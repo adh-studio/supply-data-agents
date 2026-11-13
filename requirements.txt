@@ -2,7 +2,7 @@
 # Python 3.11 a 3.13. Toutes les versions sont epinglees.
 
 # Socle : acces lecture seule a l'entrepot DuckDB + tests.
-duckdb==1.4.2
+duckdb==2.0.0
 pytest==8.4.2
 
 # alerte_rupture : envoi webhook Slack/n8n.

@@ -1,20 +1,17 @@
-famille,id_entrepot,date_jour_offset,nb_references_actives,nb_references_rupture,taux_rupture_pct
-Canapes,E01,0,12,1,8.3
-Canapes,E01,7,12,2,16.7
-Canapes,E02,0,10,0,0.0
-Luminaires,E01,0,18,1,5.6
-Luminaires,E01,7,18,3,16.7
-Luminaires,E02,0,15,0,0.0
-Tapis,E01,0,14,1,7.1
-Tapis,E01,7,14,1,7.1
-Tapis,E02,0,11,0,0.0
-Tables,E01,0,16,0,0.0
-Tables,E02,0,13,1,7.7
-Tables,E02,7,13,2,15.4
-Rangements,E01,0,20,0,0.0
-Rangements,E02,0,17,1,5.9
-Decoration,E01,0,25,0,0.0
-Decoration,E02,0,22,0,0.0
-Decoration,E01,7,25,2,8.0
-Chaises,E01,0,9,0,0.0
-Chaises,E01,7,9,1,11.1
+id_entrepot,nom_entrepot,famille,nb_observations,nb_ruptures,taux_rupture
+E01,Entrepot central Lille,Canapes,270,9,0.0333
+E01,Entrepot central Lille,Luminaires,360,18,0.05
+E01,Entrepot central Lille,Tapis,270,27,0.1
+E01,Entrepot central Lille,Tables,300,6,0.02
+E01,Entrepot central Lille,Rangements,330,3,0.0091
+E01,Entrepot central Lille,Decoration,450,9,0.02
+E01,Entrepot central Lille,Chaises,180,9,0.05
+E01,Entrepot central Lille,Linge de maison,240,12,0.05
+E02,Plateforme Lyon Sud,Canapes,180,3,0.0167
+E02,Plateforme Lyon Sud,Luminaires,270,6,0.0222
+E02,Plateforme Lyon Sud,Tapis,210,12,0.0571
+E02,Plateforme Lyon Sud,Tables,240,9,0.0375
+E02,Plateforme Lyon Sud,Rangements,270,3,0.0111
+E02,Plateforme Lyon Sud,Decoration,390,6,0.0154
+E02,Plateforme Lyon Sud,Chaises,150,3,0.02
+E02,Plateforme Lyon Sud,Linge de maison,210,6,0.0286

@@ -37,14 +37,19 @@ class TestConstructionBase:
         )
         assert len(lignes) >= 3
 
-    def test_les_dates_sont_recentes(self):
+    def test_les_dates_inventaire_sont_des_vraies_dates(self):
         lignes = requete(
-            "SELECT MAX(date_jour) AS derniere FROM supply_taux_rupture"
+            "SELECT MIN(date_dernier_inventaire) AS premiere, "
+            "MAX(date_dernier_inventaire) AS derniere "
+            "FROM supply_couverture_stock"
         )
         import datetime
 
+        premiere = lignes[0]["premiere"]
         derniere = lignes[0]["derniere"]
-        assert (datetime.date.today() - derniere).days <= 1
+        assert isinstance(premiere, datetime.date)
+        assert isinstance(derniere, datetime.date)
+        assert premiere <= derniere <= datetime.date.today()
 
 
 class TestConnexion:
@@ -121,7 +126,7 @@ class TestGardesRequete:
 
     def test_jointure_entre_marts_autorisee(self):
         lignes = requete(
-            "SELECT s.nom_produit, t.taux_marge "
+            "SELECT s.nom_produit, t.marge_brute "
             "FROM supply_couverture_stock s "
             "JOIN offre_top_flop_produits t ON s.id_produit = t.id_produit "
             "LIMIT 5"

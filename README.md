@@ -33,8 +33,10 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
   allowlist stricte des 5 marts.
 - **Mode fixture (tests et CI)** : avec `TEST_MODE=1`, tout tourne sur
   `fixtures/entrepot_test.duckdb`, une petite base construite depuis les CSV du
-  dossier `fixtures/` (`python fixtures/construire_base.py`). Aucune dependance
-  au repo voisin ni au reseau : la CI est autonome.
+  dossier `fixtures/` (`python fixtures/construire_base.py`). Les CSV
+  reproduisent exactement le schema des 5 marts reels (memes tables, memes
+  colonnes, memes types). Aucune dependance au repo voisin ni au reseau : la
+  CI est autonome.
 - **LLM optionnel** : les modules qui le peuvent utilisent `claude-sonnet-5`
   (librairie `anthropic`) uniquement si `ANTHROPIC_API_KEY` est presente. Sinon,
   chaque module bascule sur un mode deterministe de repli. Les tests n'appellent
@@ -96,7 +98,7 @@ Rapport markdown : ./rapport.md
 Rapport HTML : ./docs/rapport-hebdo.html
 ```
 
-Un exemple genere sur la base fixture est publie ici :
+Un exemple genere sur l'entrepot reel (supply-dbt-warehouse) est publie ici :
 https://adh-studio.github.io/supply-data-agents/rapport-hebdo.html
 
 ### 4. gardien_qualite : diagnostic des tests dbt en echec

@@ -89,12 +89,13 @@ def lire_produits(limite: int = 3) -> list[dict]:
             t.id_produit,
             t.nom_produit,
             t.famille,
-            t.type_classement,
-            c.statut_couverture
+            t.segment,
+            MAX(c.statut_couverture) AS statut_couverture
         FROM offre_top_flop_produits t
         LEFT JOIN supply_couverture_stock c
             ON t.id_produit = c.id_produit
-        ORDER BY t.type_classement DESC, t.rang ASC
+        GROUP BY t.id_produit, t.nom_produit, t.famille, t.segment, t.rang_ca
+        ORDER BY CASE WHEN t.segment = 'top' THEN 0 ELSE 1 END, t.rang_ca ASC
         LIMIT {limite}
         """
     )

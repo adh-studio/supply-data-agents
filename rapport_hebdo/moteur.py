@@ -45,44 +45,45 @@ def calculer_kpi() -> dict:
 
 
 def _kpi_rupture() -> dict:
-    """Taux de rupture global et par entrepot sur le dernier jour connu."""
+    """Taux de rupture global et par entrepot (observations sur 90 jours)."""
     lignes = requete(
         """
         SELECT
             id_entrepot,
-            SUM(nb_references_actives) AS nb_references_actives,
-            SUM(nb_references_rupture) AS nb_references_rupture
+            SUM(nb_observations) AS nb_observations,
+            SUM(nb_ruptures) AS nb_ruptures
         FROM supply_taux_rupture
-        WHERE date_jour = (SELECT MAX(date_jour) FROM supply_taux_rupture)
         GROUP BY id_entrepot
         ORDER BY id_entrepot
         """
     )
     par_entrepot = []
-    total_actives = 0
+    total_observations = 0
     total_ruptures = 0
     for ligne in lignes:
-        actives = int(ligne["nb_references_actives"])
-        ruptures = int(ligne["nb_references_rupture"])
-        total_actives += actives
+        observations = int(ligne["nb_observations"])
+        ruptures = int(ligne["nb_ruptures"])
+        total_observations += observations
         total_ruptures += ruptures
         par_entrepot.append(
             {
                 "id_entrepot": ligne["id_entrepot"],
-                "nb_references_actives": actives,
-                "nb_references_rupture": ruptures,
-                "taux_rupture_pct": round(100.0 * ruptures / actives, 2)
-                if actives
+                "nb_observations": observations,
+                "nb_ruptures": ruptures,
+                "taux_rupture_pct": round(100.0 * ruptures / observations, 2)
+                if observations
                 else 0.0,
             }
         )
     taux_global = (
-        round(100.0 * total_ruptures / total_actives, 2) if total_actives else 0.0
+        round(100.0 * total_ruptures / total_observations, 2)
+        if total_observations
+        else 0.0
     )
     return {
         "taux_global_pct": taux_global,
-        "nb_references_actives": total_actives,
-        "nb_references_rupture": total_ruptures,
+        "nb_observations": total_observations,
+        "nb_ruptures": total_ruptures,
         "par_entrepot": par_entrepot,
     }
 
@@ -102,7 +103,8 @@ def _kpi_top_familles_marge() -> list[dict]:
             "famille": ligne["famille"],
             "quantite_vendue": int(ligne["quantite_vendue"]),
             "chiffre_affaires": round(float(ligne["chiffre_affaires"]), 2),
-            "taux_marge": round(float(ligne["taux_marge"]), 2),
+            # taux_marge est stocke en fraction (0-1) dans le mart.
+            "taux_marge": round(100.0 * float(ligne["taux_marge"]), 2),
         }
         for ligne in lignes
     ]
@@ -129,18 +131,19 @@ def _kpi_otif() -> dict:
     """OTIF moyen des fournisseurs et les 3 fournisseurs les plus en retard."""
     lignes = requete(
         """
-        SELECT nom_fournisseur, famille_principale, taux_otif
+        SELECT nom_fournisseur, pays, taux_service_otif
         FROM supply_delais_fournisseurs
-        ORDER BY taux_otif ASC, nom_fournisseur ASC
+        ORDER BY taux_service_otif ASC, nom_fournisseur ASC
         """
     )
-    valeurs = [float(ligne["taux_otif"]) for ligne in lignes]
+    # taux_service_otif est stocke en fraction (0-1) dans le mart.
+    valeurs = [100.0 * float(ligne["taux_service_otif"]) for ligne in lignes]
     moyen = round(sum(valeurs) / len(valeurs), 2) if valeurs else 0.0
     pires = [
         {
             "nom_fournisseur": ligne["nom_fournisseur"],
-            "famille_principale": ligne["famille_principale"],
-            "taux_otif": round(float(ligne["taux_otif"]), 2),
+            "pays": ligne["pays"],
+            "taux_otif": round(100.0 * float(ligne["taux_service_otif"]), 2),
         }
         for ligne in lignes[:3]
     ]
@@ -152,10 +155,10 @@ def _kpi_dormants() -> dict:
     lignes = requete(
         """
         SELECT id_produit, nom_produit, famille, id_entrepot,
-               stock_disponible, couverture_jours
+               quantite_disponible, couverture_jours
         FROM supply_couverture_stock
         WHERE statut_couverture = 'dormant'
-        ORDER BY couverture_jours DESC, id_produit ASC
+        ORDER BY quantite_disponible DESC, id_produit ASC
         """
     )
     produits = [
@@ -164,8 +167,11 @@ def _kpi_dormants() -> dict:
             "nom_produit": ligne["nom_produit"],
             "famille": ligne["famille"],
             "id_entrepot": ligne["id_entrepot"],
-            "stock_disponible": int(ligne["stock_disponible"]),
-            "couverture_jours": round(float(ligne["couverture_jours"]), 1),
+            "quantite_disponible": int(ligne["quantite_disponible"]),
+            # couverture_jours est NULL quand le produit ne se vend plus.
+            "couverture_jours": round(float(ligne["couverture_jours"]), 1)
+            if ligne["couverture_jours"] is not None
+            else None,
         }
         for ligne in lignes
     ]
@@ -229,16 +235,16 @@ def puces_deterministes(kpi: dict) -> list[str]:
     if rupture["taux_global_pct"] > SEUIL_ALERTE_RUPTURE_PCT:
         puces.append(
             f"Alerte disponibilite : le taux de rupture atteint "
-            f"{rupture['taux_global_pct']} % ({rupture['nb_references_rupture']} "
-            f"references sur {rupture['nb_references_actives']}), "
+            f"{rupture['taux_global_pct']} % ({rupture['nb_ruptures']} "
+            f"ruptures sur {rupture['nb_observations']} observations), "
             f"entrepot le plus touche : {pire_entrepot['id_entrepot']} "
             f"a {pire_entrepot['taux_rupture_pct']} %."
         )
     else:
         puces.append(
             f"Disponibilite maitrisee : taux de rupture global de "
-            f"{rupture['taux_global_pct']} % ({rupture['nb_references_rupture']} "
-            f"references sur {rupture['nb_references_actives']}), "
+            f"{rupture['taux_global_pct']} % ({rupture['nb_ruptures']} "
+            f"ruptures sur {rupture['nb_observations']} observations), "
             f"point de vigilance sur l'entrepot {pire_entrepot['id_entrepot']} "
             f"a {pire_entrepot['taux_rupture_pct']} %."
         )
@@ -299,16 +305,16 @@ def rendre_markdown(kpi: dict, puces: list[str], horodatage: datetime) -> str:
         "## Taux de rupture",
         "",
         f"Taux global : **{rupture['taux_global_pct']} %** "
-        f"({rupture['nb_references_rupture']} references en rupture "
-        f"sur {rupture['nb_references_actives']} actives).",
+        f"({rupture['nb_ruptures']} ruptures observees "
+        f"sur {rupture['nb_observations']} observations).",
         "",
-        "| Entrepot | References actives | En rupture | Taux |",
+        "| Entrepot | Observations | Ruptures | Taux |",
         "| --- | ---: | ---: | ---: |",
     ]
     for entrepot in rupture["par_entrepot"]:
         lignes.append(
-            f"| {entrepot['id_entrepot']} | {entrepot['nb_references_actives']} "
-            f"| {entrepot['nb_references_rupture']} "
+            f"| {entrepot['id_entrepot']} | {entrepot['nb_observations']} "
+            f"| {entrepot['nb_ruptures']} "
             f"| {entrepot['taux_rupture_pct']} % |"
         )
     lignes += [
@@ -337,13 +343,13 @@ def rendre_markdown(kpi: dict, puces: list[str], horodatage: datetime) -> str:
         f"OTIF moyen sur {otif['nb_fournisseurs']} fournisseurs : "
         f"**{otif['moyen_pct']} %**.",
         "",
-        "| Fournisseur a surveiller | Famille principale | OTIF |",
+        "| Fournisseur a surveiller | Pays | OTIF |",
         "| --- | --- | ---: |",
     ]
     for fournisseur in otif["pires"]:
         lignes.append(
             f"| {fournisseur['nom_fournisseur']} "
-            f"| {fournisseur['famille_principale']} "
+            f"| {fournisseur['pays']} "
             f"| {fournisseur['taux_otif']} % |"
         )
     lignes += [
@@ -356,10 +362,15 @@ def rendre_markdown(kpi: dict, puces: list[str], horodatage: datetime) -> str:
         "| --- | --- | --- | ---: | ---: |",
     ]
     for produit in dormants["produits"]:
+        couverture = (
+            produit["couverture_jours"]
+            if produit["couverture_jours"] is not None
+            else "non calculable"
+        )
         lignes.append(
             f"| {produit['nom_produit']} | {produit['famille']} "
-            f"| {produit['id_entrepot']} | {produit['stock_disponible']} "
-            f"| {produit['couverture_jours']} |"
+            f"| {produit['id_entrepot']} | {produit['quantite_disponible']} "
+            f"| {couverture} |"
         )
     lignes.append("")
     return "\n".join(lignes)
@@ -436,8 +447,8 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
 
     lignes_rupture = "".join(
         f"<tr><td>{e(str(x['id_entrepot']))}</td>"
-        f"<td class='nombre'>{x['nb_references_actives']}</td>"
-        f"<td class='nombre'>{x['nb_references_rupture']}</td>"
+        f"<td class='nombre'>{x['nb_observations']}</td>"
+        f"<td class='nombre'>{x['nb_ruptures']}</td>"
         f"<td class='nombre'>{x['taux_rupture_pct']} %</td>"
         f"<td>{_barre_svg(x['taux_rupture_pct'], 10.0, '#a94431')}</td></tr>"
         for x in rupture["par_entrepot"]
@@ -452,7 +463,7 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
     )
     lignes_otif = "".join(
         f"<tr><td>{e(x['nom_fournisseur'])}</td>"
-        f"<td>{e(x['famille_principale'])}</td>"
+        f"<td>{e(x['pays'])}</td>"
         f"<td class='nombre'>{x['taux_otif']} %</td>"
         f"<td>{_barre_svg(x['taux_otif'], 100.0, '#a94431')}</td></tr>"
         for x in otif["pires"]
@@ -460,8 +471,14 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
     lignes_dormants = "".join(
         f"<tr><td>{e(x['nom_produit'])}</td><td>{e(x['famille'])}</td>"
         f"<td>{e(str(x['id_entrepot']))}</td>"
-        f"<td class='nombre'>{x['stock_disponible']}</td>"
-        f"<td class='nombre'>{x['couverture_jours']}</td></tr>"
+        f"<td class='nombre'>{x['quantite_disponible']}</td>"
+        f"<td class='nombre'>"
+        + (
+            str(x["couverture_jours"])
+            if x["couverture_jours"] is not None
+            else "non calculable"
+        )
+        + "</td></tr>"
         for x in dormants["produits"]
     )
     puces_html = "".join(f"<li>{e(puce)}</li>" for puce in puces)
@@ -503,8 +520,8 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
 
   <h2>Taux de rupture par entrepot</h2>
   <div class="enveloppe-table"><table>
-    <tr><th>Entrepot</th><th class="nombre">References actives</th>
-        <th class="nombre">En rupture</th><th class="nombre">Taux</th><th></th></tr>
+    <tr><th>Entrepot</th><th class="nombre">Observations</th>
+        <th class="nombre">Ruptures</th><th class="nombre">Taux</th><th></th></tr>
     {lignes_rupture}
   </table></div>
 
@@ -518,7 +535,7 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
 
   <h2>Fiabilite fournisseurs (OTIF)</h2>
   <div class="enveloppe-table"><table>
-    <tr><th>Fournisseur a surveiller</th><th>Famille principale</th>
+    <tr><th>Fournisseur a surveiller</th><th>Pays</th>
         <th class="nombre">OTIF</th><th></th></tr>
     {lignes_otif}
   </table></div>

@@ -327,7 +327,7 @@ def rendre_markdown(kpi: dict, puces: list[str], horodatage: datetime) -> str:
     for famille in kpi["top_familles_marge"]:
         lignes.append(
             f"| {famille['famille']} | {famille['quantite_vendue']} "
-            f"| {famille['chiffre_affaires']:,.0f} EUR".replace(",", " ")
+            f"| {famille['chiffre_affaires']:,.0f} MGA".replace(",", " ")
             + f" | {famille['taux_marge']} % |"
         )
     pire_rotation = kpi["pire_rotation"]
@@ -456,7 +456,7 @@ def rendre_html(kpi: dict, puces: list[str], horodatage: datetime) -> str:
     lignes_marge = "".join(
         f"<tr><td>{e(x['famille'])}</td>"
         f"<td class='nombre'>{x['quantite_vendue']}</td>"
-        f"<td class='nombre'>{x['chiffre_affaires']:,.0f} EUR</td>".replace(",", " ")
+        f"<td class='nombre'>{x['chiffre_affaires']:,.0f} MGA</td>".replace(",", " ")
         + f"<td class='nombre'>{x['taux_marge']} %</td>"
         f"<td>{_barre_svg(x['taux_marge'], 100.0, '#8a6d3b')}</td></tr>"
         for x in kpi["top_familles_marge"]

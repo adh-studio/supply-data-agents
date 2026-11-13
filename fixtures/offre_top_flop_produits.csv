@@ -1,0 +1,17 @@
+id_produit,nom_produit,famille,quantite_vendue,chiffre_affaires,taux_marge,rang,type_classement
+P018,Coussin lin lave Mia ocre,Decoration,486,17010.00,62.0,1,top
+P001,Canape 3 places Oslo gris,Canapes,126,113274.00,37.8,2,top
+P004,Lampadaire arc Milo noir,Luminaires,342,44460.00,49.5,3,top
+P007,Tapis berbere Atlas 160x230,Tapis,261,65250.00,45.1,4,top
+P020,Chaise bistrot Lea cannage,Chaises,279,25110.00,48.3,5,top
+P016,Miroir soleil Rani dore,Decoration,198,13860.00,57.6,6,top
+P010,Table basse manguier Suri,Tables,108,27000.00,42.2,7,top
+P005,Suspension rotin Bali naturel,Luminaires,180,21600.00,53.4,8,top
+P013,Etagere echelle Nino bambou,Rangements,144,18720.00,46.8,9,top
+P002,Canape d angle Vence beige,Canapes,75,89250.00,39.1,10,top
+P009,Tapis shaggy Como taupe,Tapis,12,1788.00,28.4,1,flop
+P017,Vase gres artisanal Tao,Decoration,18,612.00,31.0,2,flop
+P012,Console entree Pia blanche,Tables,9,2061.00,26.7,3,flop
+P019,Plaid grosse maille Nour creme,Decoration,27,1053.00,33.5,4,flop
+P003,Fauteuil velours Louna vert,Canapes,21,9429.00,30.2,5,flop
+P014,Buffet scandinave Lund 2 portes,Rangements,15,6735.00,32.8,6,flop

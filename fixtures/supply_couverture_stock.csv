@@ -1,0 +1,21 @@
+id_produit,nom_produit,famille,id_entrepot,stock_disponible,vente_moyenne_jour,couverture_jours,statut_couverture
+P001,Canape 3 places Oslo gris,Canapes,E01,0,4.2,0.0,rupture
+P002,Canape d angle Vence beige,Canapes,E01,38,2.5,15.2,sain
+P003,Fauteuil velours Louna vert,Canapes,E02,120,1.1,109.1,surstock
+P004,Lampadaire arc Milo noir,Luminaires,E01,0,3.8,0.0,rupture
+P005,Suspension rotin Bali naturel,Luminaires,E02,45,2.0,22.5,sain
+P006,Lampe de table Ceramique Ida,Luminaires,E01,15,1.5,10.0,sain
+P007,Tapis berbere Atlas 160x230,Tapis,E01,0,2.9,0.0,rupture
+P008,Tapis jute Nala 120x170,Tapis,E02,60,1.8,33.3,sain
+P009,Tapis shaggy Como taupe,Tapis,E01,210,0.4,525.0,dormant
+P010,Table basse manguier Suri,Tables,E01,25,1.2,20.8,sain
+P011,Table a manger chene Elan 180cm,Tables,E02,8,0.9,8.9,sain
+P012,Console entree Pia blanche,Tables,E01,95,0.3,316.7,dormant
+P013,Etagere echelle Nino bambou,Rangements,E02,40,1.6,25.0,sain
+P014,Buffet scandinave Lund 2 portes,Rangements,E01,70,0.7,100.0,surstock
+P015,Bibliotheque murale Kaj noire,Rangements,E02,12,1.0,12.0,sain
+P016,Miroir soleil Rani dore,Decoration,E01,55,2.2,25.0,sain
+P017,Vase gres artisanal Tao,Decoration,E02,180,0.5,360.0,dormant
+P018,Coussin lin lave Mia ocre,Decoration,E01,33,5.4,6.1,sain
+P019,Plaid grosse maille Nour creme,Decoration,E02,140,1.3,107.7,surstock
+P020,Chaise bistrot Lea cannage,Chaises,E01,22,3.1,7.1,sain

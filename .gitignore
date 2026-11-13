@@ -1,0 +1,35 @@
+# Environnements Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Bases construites localement (la fixture se reconstruit depuis les CSV)
+fixtures/entrepot_test.duckdb
+fixtures/entrepot_test.duckdb.wal
+*.duckdb
+*.duckdb.wal
+
+# Outils
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Systeme et editeurs
+.DS_Store
+.idea/
+.vscode/
+
+# Sorties generees a l'execution (jamais versionnees)
+outbox/
+a_valider/
+validees/
+journal_qa.jsonl
+/rapport.md
+
+# Secrets
+.env
+.env.*

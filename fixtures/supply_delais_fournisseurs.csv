@@ -1,0 +1,16 @@
+id_fournisseur,nom_fournisseur,famille_principale,nb_commandes_periode,nb_commandes_a_temps,nb_commandes_completes,delai_moyen_jours,delai_contractuel_jours,taux_otif,date_derniere_reception_offset
+F01,Nordic Living AB,Canapes,24,22,23,18.5,21,87.5,2
+F02,Atelier Lumea,Luminaires,30,29,30,9.8,12,96.7,1
+F03,Tissages du Maroc,Tapis,12,6,10,34.2,25,41.7,15
+F04,Manufacture Chene et Co,Tables,18,16,17,22.0,24,83.3,4
+F05,Rotin et Fibres SARL,Decoration,20,19,19,11.4,14,90.0,3
+F06,Ceramiques de Provence,Decoration,15,14,15,8.2,10,93.3,2
+F07,Scandi Wood Oy,Rangements,22,20,21,19.6,21,86.4,5
+F08,Textiles Lin et Laine,Decoration,28,27,28,7.5,10,96.4,1
+F09,Metal Design Torino,Luminaires,10,7,9,27.8,20,60.0,9
+F10,Bambou Horizon,Rangements,14,13,14,16.1,18,92.9,6
+F11,Cannage et Bistrot,Chaises,16,15,16,13.9,15,93.8,2
+F12,Velours et Confort,Canapes,11,10,11,20.3,21,90.9,7
+F13,Jute Natura Ltd,Tapis,9,8,9,29.5,30,88.9,8
+F14,Verrerie Artisanale Lyon,Decoration,13,12,13,10.7,12,92.3,3
+F15,Mobilier Atlas Export,Tables,8,4,7,38.6,28,50.0,21

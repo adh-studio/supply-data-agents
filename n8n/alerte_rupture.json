@@ -1,0 +1,187 @@
+{
+  "name": "Alerte rupture de stock - quotidienne 7h",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "bda2eddf-d39c-49e7-bd2b-37acda5d9d90",
+      "name": "Declencheur quotidien 7h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/supply-data-agents && TEST_MODE=0 .venv/bin/python -m alerte_rupture --json"
+      },
+      "id": "d05f168e-8ed4-4f37-a6a3-363448efc862",
+      "name": "Lancer alerte_rupture --json",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [-180, 0],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-0001",
+              "leftValue": "={{ JSON.parse($json.stdout).nb_ruptures }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "1e2fd8ca-fe3b-485f-81e2-c2d355c357a4",
+      "name": "Au moins une rupture ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [40, 0]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#supply-alertes",
+          "mode": "name"
+        },
+        "text": "={{ JSON.parse($json.stdout).message }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "def7d593-a3ad-4c70-a2bf-946128838366",
+      "name": "Slack - envoyer l'alerte",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [260, -100],
+      "credentials": {
+        "slackApi": {
+          "id": "REMPLACER_PAR_ID_CREDENTIAL",
+          "name": "Compte Slack (placeholder)"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "5b3052ed-2b7e-4f7b-998a-9036b465f270",
+      "name": "Rien a signaler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [260, 60]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#supply-incidents",
+          "mode": "name"
+        },
+        "text": "=:warning: Echec du workflow alerte rupture : la commande python a echoue.\n```{{ $json.stderr || $json.error || 'erreur inconnue' }}```",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "ab52dd1a-20bd-42a8-9472-5143c8c438ce",
+      "name": "Slack - signaler l'echec",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [40, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "REMPLACER_PAR_ID_CREDENTIAL",
+          "name": "Compte Slack (placeholder)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Declencheur quotidien 7h": {
+      "main": [
+        [
+          {
+            "node": "Lancer alerte_rupture --json",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lancer alerte_rupture --json": {
+      "main": [
+        [
+          {
+            "node": "Au moins une rupture ?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack - signaler l'echec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Au moins une rupture ?": {
+      "main": [
+        [
+          {
+            "node": "Slack - envoyer l'alerte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rien a signaler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "supply-data-agents-demo"
+  },
+  "active": false,
+  "versionId": "1",
+  "tags": [
+    {
+      "name": "supply"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Dependances du repo supply-data-agents (fusion des requirements des modules).
+# Python 3.11 a 3.13. Toutes les versions sont epinglees.
+
+# Socle : acces lecture seule a l'entrepot DuckDB + tests.
+duckdb==1.4.2
+pytest==8.4.2
+
+# alerte_rupture : envoi webhook Slack/n8n.
+requests==2.32.3
+
+# agent_qa, rapport_hebdo, fiches_produits : acces LLM optionnel
+# (claude-sonnet-5, active uniquement si ANTHROPIC_API_KEY est presente).
+anthropic==0.69.0
+
+# fiches_produits : en-tetes YAML des fiches a valider.
+pyyaml==6.0.3

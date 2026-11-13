@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supply Data Agents - la donnee validee devient de l'action</title>
+<style>
+  :root {
+    --fond: #f6f7fb;
+    --carte: #ffffff;
+    --encre: #1c2333;
+    --encre-douce: #5a6478;
+    --accent: #2f6fed;
+    --accent-doux: #e8effd;
+    --vert: #1e9e6a;
+    --vert-doux: #e4f5ee;
+    --ambre: #b97609;
+    --ambre-doux: #fdf3e0;
+    --violet: #7c4dd6;
+    --violet-doux: #f1eafc;
+    --rose: #d14343;
+    --rose-doux: #fdecec;
+    --bordure: #e3e7f0;
+    --rayon: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--fond);
+    color: var(--encre);
+    line-height: 1.6;
+  }
+  .conteneur { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+
+  header {
+    background: linear-gradient(135deg, #16203a 0%, #1f3a6e 55%, #2f6fed 100%);
+    color: #fff;
+    padding: 64px 0 56px;
+  }
+  header .etiquette {
+    display: inline-block;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: .8rem;
+    letter-spacing: .04em;
+    margin-bottom: 18px;
+  }
+  header h1 { font-size: clamp(1.7rem, 4vw, 2.6rem); line-height: 1.2; margin-bottom: 14px; }
+  header p.sous-titre {
+    max-width: 640px;
+    font-size: 1.05rem;
+    color: rgba(255,255,255,.85);
+  }
+  header .chaine {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 28px;
+    font-size: .85rem;
+  }
+  header .chaine span {
+    background: rgba(255,255,255,.12);
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 8px;
+    padding: 6px 12px;
+    white-space: nowrap;
+  }
+  header .chaine .fleche { background: none; border: none; opacity: .7; padding: 0; }
+
+  main { padding: 48px 0 24px; }
+  .intro {
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-radius: var(--rayon);
+    padding: 24px 28px;
+    margin-bottom: 40px;
+    color: var(--encre-douce);
+  }
+  .intro strong { color: var(--encre); }
+
+  .carte-module {
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-radius: var(--rayon);
+    padding: 28px;
+    margin-bottom: 28px;
+    box-shadow: 0 1px 3px rgba(28,35,51,.05);
+  }
+  .carte-module .entete {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .pastille {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .carte-module h2 { font-size: 1.25rem; }
+  .badge {
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+  .b-bleu   { background: var(--accent-doux); color: var(--accent); }
+  .b-vert   { background: var(--vert-doux);   color: var(--vert); }
+  .b-ambre  { background: var(--ambre-doux);  color: var(--ambre); }
+  .b-violet { background: var(--violet-doux); color: var(--violet); }
+  .b-rose   { background: var(--rose-doux);   color: var(--rose); }
+
+  .probleme { color: var(--encre-douce); margin: 10px 0 18px; }
+  .probleme strong { color: var(--encre); }
+
+  .grille {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } }
+  .bloc-info {
+    background: var(--fond);
+    border: 1px solid var(--bordure);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: .92rem;
+  }
+  .bloc-info .titre-bloc {
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--encre-douce);
+    margin-bottom: 6px;
+  }
+
+  .flux {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    background: var(--fond);
+    border: 1px dashed var(--bordure);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    font-size: .85rem;
+  }
+  .flux .etape {
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-radius: 8px;
+    padding: 6px 12px;
+    white-space: nowrap;
+  }
+  .flux .etape.accentuee { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .flux .f { color: var(--encre-douce); }
+
+  .lien-module {
+    display: inline-block;
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 8px 16px;
+    transition: background .15s;
+  }
+  .lien-module:hover { background: var(--accent-doux); }
+  .lien-secondaire {
+    display: inline-block;
+    font-size: .9rem;
+    color: var(--encre-douce);
+    margin-left: 12px;
+  }
+
+  footer {
+    border-top: 1px solid var(--bordure);
+    padding: 28px 0 40px;
+    color: var(--encre-douce);
+    font-size: .9rem;
+  }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="conteneur">
+    <span class="etiquette">Portfolio - Product Owner Data &amp; IA</span>
+    <h1>Supply Data Agents<br>La donnee validee devient de l'action</h1>
+    <p class="sous-titre">
+      Cinq automatisations posees au-dessus d'un entrepot analytique dbt + DuckDB
+      pour une enseigne de decoration et d'ameublement : alertes, self-service,
+      rapports, garde de qualite et generation assistee, toujours avec un humain
+      dans la boucle.
+    </p>
+    <div class="chaine">
+      <span>Donnees brutes</span>
+      <span class="fleche">&rarr;</span>
+      <span>dbt (supply-dbt-warehouse)</span>
+      <span class="fleche">&rarr;</span>
+      <span>5 marts DuckDB testes</span>
+      <span class="fleche">&rarr;</span>
+      <span><strong>supply-data-agents : l'action</strong></span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="conteneur">
+
+    <div class="intro">
+      <strong>Le principe :</strong> un tableau de bord que personne ne regarde ne sert a rien.
+      Chaque module ci-dessous part d'un probleme metier concret, se declenche tout seul
+      (planification ou evenement), s'appuie uniquement sur les marts valides par les tests dbt,
+      et produit une sortie directement utilisable : un message Slack, une reponse chiffree,
+      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (86 tests) et
+      fonctionne sans cle d'API grace a des modes de repli deterministes.
+    </div>
+
+    <!-- Module 1 : alerte_rupture -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-rose">&#128680;</div>
+        <h2>Alerte rupture de stock</h2>
+        <span class="badge b-rose">Alerte</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> une rupture sur un canape ou un luminaire best-seller
+        coute des ventes chaque jour. L'information existe dans l'entrepot, mais personne
+        ne la regarde a 7 h du matin.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Declencheur</div>
+          Tous les jours a 7 h (cron ou n8n Schedule Trigger fourni).
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Sortie</div>
+          Message Slack pret a poster : produits en rupture, couverture, quantite de
+          reapprovisionnement suggeree (30 jours de vente). Copie archivee en local.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">7 h : planification</span><span class="f">&rarr;</span>
+        <span class="etape">Lecture du mart couverture de stock</span><span class="f">&rarr;</span>
+        <span class="etape">Selection des ruptures</span><span class="f">&rarr;</span>
+        <span class="etape">Calcul du reappro</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Slack #supply-alertes</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/alerte_rupture">Voir le module alerte_rupture</a>
+      <a class="lien-secondaire" href="https://github.com/adh-studio/supply-data-agents/blob/main/n8n/alerte_rupture.json">Workflow n8n importable</a>
+    </section>
+
+    <!-- Module 2 : agent_qa -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-bleu">&#128172;</div>
+        <h2>Agent question-reponse metier</h2>
+        <span class="badge b-bleu">Self-service</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> "Quelle famille a la pire rotation ?" Chaque question
+        simple devient un ticket pour l'equipe data. Le self-service existe rarement parce
+        qu'on a peur de laisser un LLM ecrire du SQL sans filet.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Declencheur</div>
+          A la demande : une question en francais, en ligne de commande ou branchee sur Slack.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Sortie</div>
+          Une reponse chiffree en francais. Chaque echange est trace dans un journal d'audit
+          (qui a demande quoi, quel SQL a tourne, quelle reponse est sortie).
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Question en francais</span><span class="f">&rarr;</span>
+        <span class="etape">SQL (LLM ou bibliotheque de questions types)</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Garde : SELECT seul, 5 marts autorises</span><span class="f">&rarr;</span>
+        <span class="etape">Reponse chiffree + journal d'audit</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/agent_qa">Voir le module agent_qa</a>
+    </section>
+
+    <!-- Module 3 : rapport_hebdo -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-vert">&#128202;</div>
+        <h2>Rapport hebdomadaire supply et offre</h2>
+        <span class="badge b-vert">Rapport</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> le comite du lundi matin a besoin des memes 5 indicateurs
+        chaque semaine : taux de rupture, marges par famille, rotation, fiabilite fournisseurs
+        (OTIF), stocks dormants. Les compiler a la main prend une heure et saute des qu'on est presse.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Declencheur</div>
+          Chaque lundi matin (exemples cron, n8n et launchd fournis dans le module).
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Sortie</div>
+          Un markdown pret pour email ou Slack, et une page HTML autonome avec tuiles KPI,
+          mini-graphiques et 3 points "ce qu'il faut retenir".
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Lundi : planification</span><span class="f">&rarr;</span>
+        <span class="etape">5 KPI calcules sur les marts</span><span class="f">&rarr;</span>
+        <span class="etape">Synthese (LLM ou regles)</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">rapport.md + page HTML</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/rapport_hebdo">Voir le module rapport_hebdo</a>
+      <a class="lien-secondaire" href="rapport-hebdo.html">Exemple de rapport genere</a>
+    </section>
+
+    <!-- Module 4 : gardien_qualite -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-ambre">&#128737;&#65039;</div>
+        <h2>Gardien de la qualite des donnees</h2>
+        <span class="badge b-ambre">Qualite</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> quand un test dbt casse, le message brut
+        ("unique_supply_couverture_stock_id_produit failed") ne dit ni ce qui s'est passe,
+        ni si c'est grave, ni quoi faire. Le diagnostic prend du temps d'expert.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Declencheur</div>
+          Apres chaque run dbt : le module lit le run_results.json produit par dbt.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Sortie</div>
+          Un diagnostic en francais par echec : categorie, gravite (bloquant ou avertissement),
+          hypothese de cause, action proposee, lignes fautives en exemple. Code de sortie 1
+          si bloquant, pour arreter le pipeline.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Run dbt termine</span><span class="f">&rarr;</span>
+        <span class="etape">Lecture run_results.json</span><span class="f">&rarr;</span>
+        <span class="etape">Categorisation + gravite</span><span class="f">&rarr;</span>
+        <span class="etape">Diagnostic en francais</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Notification + arret si bloquant</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/gardien_qualite">Voir le module gardien_qualite</a>
+    </section>
+
+    <!-- Module 5 : fiches_produits -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-violet">&#128221;</div>
+        <h2>Fiches produits assistees</h2>
+        <span class="badge b-violet">Generation + validation humaine</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> rediger des fiches produits (titre, description,
+        points forts) pour des centaines de references prend des semaines. Mais une IA
+        laissee seule invente des prix, des pourcentages et des superlatifs.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Declencheur</div>
+          A la demande, par lot : les produits prioritaires issus du mart top/flop.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">Sortie</div>
+          Des brouillons de fiches dans une zone "a valider". Garde-fous automatiques
+          (longueurs, pas de chiffre invente, pas de superlatif), puis approbation humaine
+          explicite avant tout passage en "validee". Rien n'est publie sans ce geste.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Produits prioritaires</span><span class="f">&rarr;</span>
+        <span class="etape">Redaction (LLM ou gabarit)</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Garde-fous automatiques</span><span class="f">&rarr;</span>
+        <span class="etape">Zone a valider</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Approbation humaine</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/fiches_produits">Voir le module fiches_produits</a>
+    </section>
+
+    <div class="intro">
+      <strong>Ce que ce repo demontre cote produit :</strong> partir du probleme metier et non
+      de la technologie, choisir le bon declencheur, mettre des garde-fous avant l'IA
+      (lecture seule, allowlist SQL, validation humaine), prevoir un mode degrade sans LLM,
+      et rendre chaque automatisation testable et observable. 86 tests automatises tournent
+      a chaque modification, sans secret ni reseau.
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="conteneur">
+    Henintsoa Andriamaholy - candidat Product Owner Data &amp; IA.
+    Code source : <a href="https://github.com/adh-studio/supply-data-agents">supply-data-agents</a>
+    &middot; Entrepot analytique : <a href="https://github.com/adh-studio/supply-dbt-warehouse">supply-dbt-warehouse</a>
+  </div>
+</footer>
+
+</body>
+</html>

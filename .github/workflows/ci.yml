@@ -1,0 +1,25 @@
+# Integration continue : la meme commande qu'en local (run_e2e.sh).
+# Aucun secret requis : les tests tournent sur la base fixture DuckDB
+# construite depuis les CSV du dossier fixtures/, sans appel reseau.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Suite de tests (base fixture)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperation du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pipeline de bout en bout (venv + fixture + pytest)
+        run: ./run_e2e.sh

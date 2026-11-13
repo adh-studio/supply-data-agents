@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapport hebdomadaire supply et offre</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px 16px; background: #f4f1ec;
+         font-family: Georgia, 'Times New Roman', serif; color: #2b2520; }
+  .page { max-width: 880px; margin: 0 auto; background: #fffdf9;
+          border: 1px solid #e3dcd2; border-radius: 12px; padding: 40px 48px;
+          box-shadow: 0 2px 12px rgba(43, 37, 32, 0.06); }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: 0.01em; }
+  h2 { font-size: 1.05rem; margin: 36px 0 12px; text-transform: uppercase;
+       letter-spacing: 0.08em; color: #8a6d3b;
+       border-bottom: 1px solid #e3dcd2; padding-bottom: 6px; }
+  .horodatage { color: #857a6d; font-size: 0.9rem; margin: 0 0 24px; }
+  .retenir { background: #f8f4ec; border-left: 4px solid #8a6d3b;
+             border-radius: 0 8px 8px 0; padding: 16px 20px; }
+  .retenir ul { margin: 0; padding-left: 20px; }
+  .retenir li { margin: 8px 0; line-height: 1.5; }
+  .tuiles { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+  .tuile { flex: 1 1 150px; background: #faf7f1; border: 1px solid #e3dcd2;
+           border-radius: 10px; padding: 14px 16px; }
+  .tuile .valeur { font-size: 1.5rem; font-weight: bold; }
+  .tuile .libelle { font-size: 0.8rem; color: #857a6d; margin-top: 4px;
+                    font-family: Helvetica, Arial, sans-serif; }
+  .alerte .valeur { color: #a94431; }
+  .ok .valeur { color: #4a7a4c; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th { text-align: left; font-family: Helvetica, Arial, sans-serif;
+       font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+       color: #857a6d; padding: 8px 10px; border-bottom: 2px solid #e3dcd2; }
+  td { padding: 8px 10px; border-bottom: 1px solid #efe9df; }
+  td.nombre, th.nombre { text-align: right; font-variant-numeric: tabular-nums; }
+  .enveloppe-table { overflow-x: auto; }
+  svg { display: block; }
+  .note { color: #857a6d; font-size: 0.85rem; margin-top: 28px;
+          border-top: 1px solid #e3dcd2; padding-top: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Rapport hebdomadaire supply et offre</h1>
+  <p class="horodatage">Genere le 13/11/2026 a 12:42</p>
+
+  <h2>Ce qu'il faut retenir cette semaine</h2>
+  <div class="retenir"><ul><li>Disponibilite maitrisee : taux de rupture global de 2.48 % (5 references sur 202), point de vigilance sur l&#x27;entrepot E01 a 2.63 %.</li><li>Fiabilite fournisseurs sous le seuil : OTIF moyen de 82.94 % (objectif 85 %), plan d&#x27;action a ouvrir avec Tissages du Maroc (41.7 %).</li><li>Cote offre, la famille Objets d art affiche la meilleure marge (61.4 %), mais 3 produits dormants et la rotation la plus faible sur Objets d art (0.6) appellent un destockage cible.</li></ul></div>
+
+  <div class="tuiles">
+    <div class="tuile ok">
+      <div class="valeur">2.48 %</div>
+      <div class="libelle">Taux de rupture global</div>
+    </div>
+    <div class="tuile alerte">
+      <div class="valeur">82.94 %</div>
+      <div class="libelle">OTIF moyen fournisseurs</div>
+    </div>
+    <div class="tuile">
+      <div class="valeur">3</div>
+      <div class="libelle">Produits dormants</div>
+    </div>
+    <div class="tuile">
+      <div class="valeur">Objets d art</div>
+      <div class="libelle">Pire rotation (0.6)</div>
+    </div>
+  </div>
+
+  <h2>Taux de rupture par entrepot</h2>
+  <div class="enveloppe-table"><table>
+    <tr><th>Entrepot</th><th class="nombre">References actives</th>
+        <th class="nombre">En rupture</th><th class="nombre">Taux</th><th></th></tr>
+    <tr><td>E01</td><td class='nombre'>114</td><td class='nombre'>3</td><td class='nombre'>2.63 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="2.63"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="32" height="10" rx="5" fill="#a94431"/></svg></td></tr><tr><td>E02</td><td class='nombre'>88</td><td class='nombre'>2</td><td class='nombre'>2.27 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="2.27"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="27" height="10" rx="5" fill="#a94431"/></svg></td></tr>
+  </table></div>
+
+  <h2>Top 3 familles par taux de marge</h2>
+  <div class="enveloppe-table"><table>
+    <tr><th>Famille</th><th class="nombre">Quantite vendue</th>
+        <th class="nombre">Chiffre d'affaires</th>
+        <th class="nombre">Taux de marge</th><th></th></tr>
+    <tr><td>Objets d art</td><td class='nombre'>75</td><td class='nombre'>26 250 EUR</td><td class='nombre'>61.4 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="61.4"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="74" height="10" rx="5" fill="#8a6d3b"/></svg></td></tr><tr><td>Decoration</td><td class='nombre'>2150</td><td class='nombre'>96 750 EUR</td><td class='nombre'>58.9 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="58.9"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="71" height="10" rx="5" fill="#8a6d3b"/></svg></td></tr><tr><td>Miroirs</td><td class='nombre'>340</td><td class='nombre'>47 600 EUR</td><td class='nombre'>55.3 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="55.3"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="66" height="10" rx="5" fill="#8a6d3b"/></svg></td></tr>
+  </table></div>
+
+  <h2>Fiabilite fournisseurs (OTIF)</h2>
+  <div class="enveloppe-table"><table>
+    <tr><th>Fournisseur a surveiller</th><th>Famille principale</th>
+        <th class="nombre">OTIF</th><th></th></tr>
+    <tr><td>Tissages du Maroc</td><td>Tapis</td><td class='nombre'>41.7 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="41.7"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="50" height="10" rx="5" fill="#a94431"/></svg></td></tr><tr><td>Mobilier Atlas Export</td><td>Tables</td><td class='nombre'>50.0 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="50.0"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="60" height="10" rx="5" fill="#a94431"/></svg></td></tr><tr><td>Metal Design Torino</td><td>Luminaires</td><td class='nombre'>60.0 %</td><td><svg width="120" height="10" viewBox="0 0 120 10" role="img" aria-label="60.0"><rect width="120" height="10" rx="5" fill="#efe9df"/><rect width="72" height="10" rx="5" fill="#a94431"/></svg></td></tr>
+  </table></div>
+
+  <h2>Produits dormants</h2>
+  <div class="enveloppe-table"><table>
+    <tr><th>Produit</th><th>Famille</th><th>Entrepot</th>
+        <th class="nombre">Stock</th><th class="nombre">Couverture (jours)</th></tr>
+    <tr><td>Tapis shaggy Como taupe</td><td>Tapis</td><td>E01</td><td class='nombre'>210</td><td class='nombre'>525.0</td></tr><tr><td>Vase gres artisanal Tao</td><td>Decoration</td><td>E02</td><td class='nombre'>180</td><td class='nombre'>360.0</td></tr><tr><td>Console entree Pia blanche</td><td>Tables</td><td>E01</td><td class='nombre'>95</td><td class='nombre'>316.7</td></tr>
+  </table></div>
+
+  <p class="note">Source : entrepot analytique supply-dbt-warehouse
+  (marts valides par dbt). Rapport genere automatiquement chaque lundi matin.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,113 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/run-results/v6.json",
+    "dbt_version": "1.9.1",
+    "generated_at": "2026-11-12T03:05:41.927361Z",
+    "invocation_id": "4f1c2b7e-9a0d-4e6f-8c3a-1d2e3f4a5b6c",
+    "env": {}
+  },
+  "args": {
+    "command": "test",
+    "which": "test",
+    "target": "prod"
+  },
+  "elapsed_time": 4.812734,
+  "results": [
+    {
+      "status": "pass",
+      "timing": [
+        {
+          "name": "compile",
+          "started_at": "2026-11-12T03:05:38.102311Z",
+          "completed_at": "2026-11-12T03:05:38.154902Z"
+        },
+        {
+          "name": "execute",
+          "started_at": "2026-11-12T03:05:38.155210Z",
+          "completed_at": "2026-11-12T03:05:38.311407Z"
+        }
+      ],
+      "thread_id": "Thread-1",
+      "execution_time": 0.209096,
+      "adapter_response": {"_message": "OK"},
+      "message": null,
+      "failures": 0,
+      "unique_id": "test.supply_dbt_warehouse.unique_supply_couverture_stock_id_produit.a1b2c3d4e5",
+      "compiled": true,
+      "compiled_code": "select id_produit from supply_couverture_stock group by id_produit having count(*) > 1",
+      "relation_name": null
+    },
+    {
+      "status": "pass",
+      "timing": [
+        {
+          "name": "compile",
+          "started_at": "2026-11-12T03:05:38.321100Z",
+          "completed_at": "2026-11-12T03:05:38.370522Z"
+        },
+        {
+          "name": "execute",
+          "started_at": "2026-11-12T03:05:38.370811Z",
+          "completed_at": "2026-11-12T03:05:38.512030Z"
+        }
+      ],
+      "thread_id": "Thread-2",
+      "execution_time": 0.190930,
+      "adapter_response": {"_message": "OK"},
+      "message": null,
+      "failures": 0,
+      "unique_id": "test.supply_dbt_warehouse.not_null_supply_couverture_stock_nom_produit.b2c3d4e5f6",
+      "compiled": true,
+      "compiled_code": "select * from supply_couverture_stock where nom_produit is null",
+      "relation_name": null
+    },
+    {
+      "status": "pass",
+      "timing": [
+        {
+          "name": "compile",
+          "started_at": "2026-11-12T03:05:38.522408Z",
+          "completed_at": "2026-11-12T03:05:38.570014Z"
+        },
+        {
+          "name": "execute",
+          "started_at": "2026-11-12T03:05:38.570299Z",
+          "completed_at": "2026-11-12T03:05:38.724618Z"
+        }
+      ],
+      "thread_id": "Thread-3",
+      "execution_time": 0.202210,
+      "adapter_response": {"_message": "OK"},
+      "message": null,
+      "failures": 0,
+      "unique_id": "test.supply_dbt_warehouse.accepted_values_supply_couverture_stock_statut_couverture__rupture__sain__surstock__dormant.c3d4e5f6a7",
+      "compiled": true,
+      "compiled_code": "select statut_couverture from supply_couverture_stock where statut_couverture not in ('rupture', 'sain', 'surstock', 'dormant')",
+      "relation_name": null
+    },
+    {
+      "status": "pass",
+      "timing": [
+        {
+          "name": "compile",
+          "started_at": "2026-11-12T03:05:38.734902Z",
+          "completed_at": "2026-11-12T03:05:38.781355Z"
+        },
+        {
+          "name": "execute",
+          "started_at": "2026-11-12T03:05:38.781644Z",
+          "completed_at": "2026-11-12T03:05:38.930208Z"
+        }
+      ],
+      "thread_id": "Thread-4",
+      "execution_time": 0.195306,
+      "adapter_response": {"_message": "OK"},
+      "message": null,
+      "failures": 0,
+      "unique_id": "test.supply_dbt_warehouse.assert_taux_marge_familles_coherent.d4e5f6a7b8",
+      "compiled": true,
+      "compiled_code": "select famille, taux_marge from offre_marge_familles where taux_marge < 0 or taux_marge > 100",
+      "relation_name": null
+    }
+  ]
+}

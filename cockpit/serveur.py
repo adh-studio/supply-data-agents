@@ -5,7 +5,9 @@ Toutes les lectures de donnees passent par lib.base.requete (lecture seule,
 SELECT uniquement, allowlist des 5 marts). Les ecritures du serveur sont
 limitees aux dossiers outbox/, a_valider/, validees/, rejetees/ et au
 fichier docs/rapport-hebdo.html (plus rapport.md et journal_qa.jsonl,
-sorties historiques des modules reutilises). La base n'est JAMAIS ecrite.
+sorties historiques des modules reutilises). La vue Pipeline delegue au
+module pipeline (etat_build.json et verrou vivent dans le repo dbt).
+La base n'est JAMAIS ecrite par le cockpit.
 
 API REST JSON :
   GET  /api/etat                      etat du cockpit (ping sidecard)
@@ -21,6 +23,8 @@ API REST JSON :
   POST /api/fiches/<id>/approuver     geste humain : approbation
   POST /api/fiches/<id>/rejeter       geste humain : rejet motive
   GET  /api/sante                     gardien_qualite sur ses deux fixtures
+  GET  /api/pipeline                  etat du dernier build dbt + diagnostics
+  POST /api/pipeline/rafraichir       build dbt en arriere-plan (409 si verrou)
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -36,6 +41,7 @@ from agent_qa import moteur as moteur_qa
 from fiches_produits import moteur as moteur_fiches
 from gardien_qualite import moteur as moteur_gardien
 from lib import base
+from pipeline import moteur as moteur_pipeline
 from rapport_hebdo import moteur as moteur_rapport
 
 PORT_DEFAUT = 4300
@@ -275,6 +281,107 @@ def analyser_sante() -> dict:
     }
 
 
+_CLES_DIAGNOSTIC = {
+    "gravite": "gravite",
+    "categorie": "categorie",
+    "action proposee": "action_proposee",
+    "ce qui a casse": "ce_qui_a_casse",
+}
+
+
+def _resume_diagnostic(chemin: str) -> dict:
+    """Resume un diagnostic markdown du gardien depose dans outbox/."""
+    with open(chemin, encoding="utf-8") as fichier:
+        contenu = fichier.read()
+    genere_le = None
+    tests: list[dict] = []
+    courant: dict | None = None
+    for ligne in contenu.splitlines():
+        ligne = ligne.strip()
+        if ligne.startswith("Genere le : ") and genere_le is None:
+            genere_le = ligne.split(" : ", 1)[1].strip()
+        elif ligne.startswith("## "):
+            titre = ligne[3:].strip()
+            if ". " in titre:
+                titre = titre.split(". ", 1)[1]
+            courant = {"nom_test": titre}
+            tests.append(courant)
+        elif courant is not None and ligne.startswith("- ") and " : " in ligne:
+            cle, valeur = ligne[2:].split(" : ", 1)
+            cle = cle.strip().lower()
+            if cle in _CLES_DIAGNOSTIC:
+                courant[_CLES_DIAGNOSTIC[cle]] = valeur.strip().strip("*")
+    return {
+        "fichier": os.path.basename(chemin),
+        "chemin": chemin,
+        "genere_le": genere_le,
+        "tests": tests,
+    }
+
+
+def lister_diagnostics(limite: int = 3) -> list[dict]:
+    """Les derniers diagnostics du gardien dans l'outbox du pipeline."""
+    dossier = moteur_pipeline.dossier_outbox()
+    if not os.path.isdir(dossier):
+        return []
+    noms = sorted(
+        (
+            nom
+            for nom in os.listdir(dossier)
+            if nom.startswith("diagnostic-") and nom.endswith(".md")
+        ),
+        reverse=True,
+    )
+    resultats: list[dict] = []
+    for nom in noms[:limite]:
+        try:
+            resultats.append(_resume_diagnostic(os.path.join(dossier, nom)))
+        except OSError:
+            continue
+    return resultats
+
+
+def etat_pipeline() -> dict:
+    """Etat partage du build dbt + diagnostics du gardien en cas d'echec."""
+    etat = moteur_pipeline.lire_etat()
+    en_cours = (
+        etat.get("statut") == moteur_pipeline.STATUT_EN_COURS
+        or os.path.exists(moteur_pipeline.chemin_verrou())
+    )
+    diagnostics = (
+        lister_diagnostics()
+        if etat.get("statut") == moteur_pipeline.STATUT_ECHEC
+        else []
+    )
+    return {
+        "etat": etat,
+        "en_cours": en_cours,
+        "outbox": moteur_pipeline.dossier_outbox(),
+        "diagnostics": diagnostics,
+    }
+
+
+def demarrer_build() -> tuple[int, dict]:
+    """Lance executer_build("supplysense") dans un thread, 409 si verrou."""
+    if os.path.exists(moteur_pipeline.chemin_verrou()):
+        return 409, {
+            "ok": False,
+            "demarre": False,
+            "erreur": (
+                "Un build est deja en cours (verrou .pipeline.lock present). "
+                "Nouveau build refuse."
+            ),
+        }
+    thread = threading.Thread(
+        target=moteur_pipeline.executer_build,
+        args=("supplysense",),
+        name="pipeline-build",
+        daemon=True,
+    )
+    thread.start()
+    return 200, {"ok": True, "demarre": True}
+
+
 # ---------------------------------------------------------------------------
 # Handler HTTP
 # ---------------------------------------------------------------------------
@@ -363,6 +470,8 @@ class Cockpit(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **lister_fiches()})
             if chemin == "/api/sante":
                 return self._json(200, {"ok": True, **analyser_sante()})
+            if chemin == "/api/pipeline":
+                return self._json(200, {"ok": True, **etat_pipeline()})
             if chemin == "/rapport-hebdo.html":
                 chemin_html = os.path.join(racine(), "docs", "rapport-hebdo.html")
                 if os.path.exists(chemin_html):
@@ -404,6 +513,10 @@ class Cockpit(BaseHTTPRequestHandler):
         try:
             if chemin == "/api/ruptures/envoyer":
                 return self._json(200, {"ok": True, **envoyer_alerte()})
+
+            if chemin == "/api/pipeline/rafraichir":
+                code, reponse = demarrer_build()
+                return self._json(code, reponse)
 
             if chemin == "/api/qa":
                 question = (donnees.get("question") or "").strip()

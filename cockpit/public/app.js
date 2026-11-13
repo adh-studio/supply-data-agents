@@ -28,10 +28,12 @@ const ICONS = {
   truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 7h14v10H1zM15 10h4l4 4v3h-8z"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>',
   coin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.6-1-1.7-1.5-3-1.5-1.8 0-3 1-3 2.3 0 3.3 6.2 1.3 6.2 4.4 0 1.3-1.4 2.3-3.2 2.3-1.5 0-2.6-.6-3.2-1.6M12 6.5v11"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>',
+  pipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
 };
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
-  chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false };
+  chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false,
+  pipeline: null, pipeSel: null };
 
 const SUGGESTIONS = [
   'Quelle famille a la pire rotation ?',
@@ -490,6 +492,150 @@ function vRapport() {
   return v;
 }
 
+// ---------------- pipeline ----------------
+const LIB_DECL = { manuel: 'manuel', nocturne: 'build nocturne', supplyops: 'SupplyOps', supplysense: 'SupplySense' };
+const LIB_STATUT = { succes: 'succes', echec: 'echec', en_cours: 'en cours', jamais_construit: 'jamais construit' };
+
+function tempsRelatif(iso) {
+  if (!iso) return 'jamais';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 45) return 'a l\'instant';
+  if (s < 3600) return 'il y a ' + Math.max(1, Math.round(s / 60)) + ' min';
+  if (s < 86400) return 'il y a ' + Math.round(s / 3600) + ' h';
+  return 'il y a ' + Math.round(s / 86400) + ' j';
+}
+
+function majPipeDot() {
+  const dot = $('#pipeDot');
+  if (!dot) return;
+  const st = S.pipeline && S.pipeline.etat ? S.pipeline.etat.statut : null;
+  dot.className = 'dotlive ' + (st === 'succes' ? 'ok' : 'bad');
+  $('#pipeInfo').textContent = 'pipeline : ' + (st ? (LIB_STATUT[st] || st) : 'etat inconnu');
+}
+
+async function chargerPipeline() {
+  try { const r = await api('/pipeline'); if (r.ok) S.pipeline = r; } catch (e) { /* API injoignable : dot rouge */ }
+  majPipeDot();
+}
+
+let pipeTimer = null;
+function sonderPipeline() {
+  if (pipeTimer) return;
+  pipeTimer = setInterval(async () => {
+    await chargerPipeline();
+    const p = S.pipeline;
+    const enCours = p && (p.etat.statut === 'en_cours' || p.en_cours);
+    if (!enCours) { clearInterval(pipeTimer); pipeTimer = null; }
+    if (S.page === 'pipeline') render();
+  }, 3000);
+}
+
+function vPipeline() {
+  const v = el('div');
+  const p = S.pipeline;
+  if (!p) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
+  const e = p.etat;
+  const enCours = e.statut === 'en_cours' || p.en_cours;
+  if (enCours) sonderPipeline();
+
+  const pills = {
+    succes: `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>Dernier build : succes</span>`,
+    echec: `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>Dernier build : echec</span>`,
+    en_cours: `<span class="chip warn"><span class="dot2 blink" style="background:var(--warn)"></span>Build en cours</span>`,
+  };
+  const pill = pills[e.statut] || '<span class="chip neutre">Jamais construit</span>';
+
+  // grande carte d'etat
+  const [c1, b1] = card('Etat de l\'entrepot', 'Dernier dbt build de supply-dbt-warehouse, seeds -> modeles -> controles', {
+    head: `<button class="btn primary" id="btnBuild" style="margin-left:auto" ${enCours ? 'disabled' : ''}>${ICONS.pipe} ${enCours ? 'Build en cours' : 'Rafraichir l\'entrepot'}</button>`,
+  });
+  const quand = e.horodatage
+    ? `${tempsRelatif(e.horodatage)} · ${esc(String(e.horodatage).replace('T', ' a '))}`
+    : 'aucun build enregistre pour l\'instant';
+  const controlesOk = e.statut === 'succes' || (e.total > 0 && e.fail === 0);
+  b1.innerHTML = `
+    <div class="row" style="gap:11px;margin-bottom:13px">${pill}<span class="sub2">${quand}</span></div>
+    <div class="kpis" style="margin-bottom:0">
+      <div class="kpi"><div class="top"><span class="ico ${controlesOk ? 'green' : 'red'}">${ICONS.sante}</span><span class="lbl">Controles passes</span></div>
+        <div class="val">${nfr(e.pass)}</div><div class="hint">sur ${nfr(e.total)} modeles et tests dbt${e.fail ? ' · ' + nfr(e.fail) + ' en echec' : ''}</div></div>
+      <div class="kpi"><div class="top"><span class="ico blue">${ICONS.clock}</span><span class="lbl">Duree du build</span></div>
+        <div class="val">${nfr(e.duree_s, 1)} s</div><div class="hint">seeds, modeles et controles compris</div></div>
+      <div class="kpi"><div class="top"><span class="ico terra">${ICONS.pipe}</span><span class="lbl">Declencheur</span></div>
+        <div class="val" style="font-size:19px;letter-spacing:-.3px">${esc(LIB_DECL[e.declencheur] || e.declencheur || 'aucun')}</div>
+        <div class="hint">origine du dernier build</div></div>
+    </div>`;
+  c1.querySelector('#btnBuild').onclick = async function () {
+    this.disabled = true;
+    const r = await api('/pipeline/rafraichir', { method: 'POST', body: {} });
+    if (r.ok && r.demarre) toast(`${ICONS.check} Build demarre : l'entrepot se reconstruit`);
+    else toast('⚠️ ' + esc(r.erreur || 'echec du demarrage'));
+    await chargerPipeline();
+    sonderPipeline();
+    render();
+  };
+  v.appendChild(c1);
+
+  // frise des 20 derniers builds
+  const hist = (e.historique || []).slice(0, 20);
+  const [c2, b2] = card('Les 20 derniers builds', 'Du plus ancien au plus recent, cliquer une barre pour le detail');
+  c2.style.marginTop = '16px';
+  if (!hist.length) b2.innerHTML = '<div class="empty" style="padding:16px"><span class="big">🕐</span>Aucun build dans l\'historique pour l\'instant</div>';
+  else {
+    const affiches = [...hist].reverse();
+    const frise = el('div', 'frise');
+    affiches.forEach((h, i) => {
+      const ok = h.statut === 'succes';
+      const b = el('button', (ok ? '' : 'ko') + (S.pipeSel === i ? ' sel' : ''));
+      b.title = `${(h.horodatage || '').replace('T', ' ')} · ${h.pass} pass / ${h.fail} fail`;
+      b.setAttribute('aria-label', b.title);
+      b.onclick = () => { S.pipeSel = S.pipeSel === i ? null : i; render(); };
+      frise.appendChild(b);
+    });
+    b2.appendChild(frise);
+    const sel = S.pipeSel != null ? affiches[S.pipeSel] : null;
+    if (sel) {
+      b2.appendChild(el('div', 'frise-detail', `
+        <span class="chip ${sel.statut === 'succes' ? 'ok' : 'bad'}"><span class="dot2" style="background:${sel.statut === 'succes' ? 'var(--ok)' : 'var(--bad)'}"></span>${esc(LIB_STATUT[sel.statut] || sel.statut)}</span>
+        <span class="pill terra">${esc((sel.horodatage || '').replace('T', ' '))}</span>
+        <span class="pill">${sel.pass} pass / ${sel.fail} fail</span>
+        <span class="pill">${nfr(sel.duree_s, 1)} s</span>
+        <span class="pill">${esc(LIB_DECL[sel.declencheur] || sel.declencheur || '')}</span>`));
+    } else {
+      b2.appendChild(el('div', 'sub2', `${hist.length} build(s) memorises · ${hist.filter(h => h.statut === 'succes').length} succes`));
+    }
+  }
+  v.appendChild(c2);
+
+  // encart terracotta : diagnostic du gardien en cas d'echec
+  if (e.statut === 'echec') {
+    const [c3, b3] = card('Diagnostic du gardien de qualite', 'Chaque echec est categorise, grade et accompagne d\'une action proposee');
+    c3.style.marginTop = '16px';
+    c3.style.borderLeft = '3px solid var(--t600)';
+    if (!p.diagnostics.length) {
+      b3.innerHTML = `<div class="empty" style="padding:16px"><span class="big">🛡️</span>Aucun diagnostic depose dans l'outbox pour ce build</div>`;
+    } else {
+      const lst = el('div');
+      lst.style.cssText = 'display:flex;flex-direction:column;gap:11px';
+      for (const d of p.diagnostics) {
+        for (const t of d.tests) {
+          lst.appendChild(el('div', 'diag ' + (t.gravite || 'avertissement'), `
+            <div class="dhead">
+              <span class="chip ${t.gravite === 'bloquant' ? 'bad' : 'warn'}"><span class="dot2" style="background:${t.gravite === 'bloquant' ? 'var(--bad)' : 'var(--warn)'}"></span>${esc(t.gravite || '')}</span>
+              <span class="pill terra">${esc(t.categorie || '')}</span>
+              <b>${esc(t.nom_test)}</b>
+            </div>
+            <p><b>Action proposee :</b> ${esc(t.action_proposee || '')}</p>`));
+        }
+      }
+      b3.appendChild(lst);
+      b3.appendChild(el('div', 'outinfo', `📬 Rapports complets dans l'outbox : ${esc(p.outbox)} (${p.diagnostics.map(d => esc(d.fichier)).join(', ')})`));
+      b3.lastChild.style.marginTop = '11px';
+    }
+    v.appendChild(c3);
+  }
+  return v;
+}
+
 // ---------------- chargement ----------------
 async function chargerEtat() {
   try {
@@ -516,12 +662,14 @@ const CHARGEURS = {
   fiches: chargerFiches,
   sante: async () => { const r = await api('/sante'); if (r.ok) S.sante = r; },
   rapport: chargerRapport,
+  pipeline: chargerPipeline,
 };
 
 // ---------------- router / shell ----------------
 const PAGES = [
   ['dashboard', 'Dashboard', ICONS.dash, 1],
   ['rapport', 'Rapport hebdo', ICONS.rapport, 1],
+  ['pipeline', 'Pipeline', ICONS.pipe, 1],
   ['assistant', 'Assistant', ICONS.chat, 2],
   ['alertes', 'Alertes rupture', ICONS.alerte, 2],
   ['fiches', 'Fiches produits', ICONS.fiche, 2],
@@ -534,8 +682,9 @@ const SUBS = {
   fiches: () => 'Brouillons generes, publication par geste humain',
   sante: () => 'Diagnostics du gardien sur les tests dbt',
   rapport: () => 'Les 5 KPI du lundi matin',
+  pipeline: () => 'Build dbt, 151 controles, entrepot a jour',
 };
-const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport };
+const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline };
 
 function nav() {
   const counts = {
@@ -599,7 +748,9 @@ $('#view').innerHTML = `<div class="kpis">${'<div class="kpi"><div class="skel" 
   <div class="card"><div class="cbody"><div class="skel" style="height:180px"></div></div></div></div>`;
 (async () => {
   await chargerEtat();
+  chargerPipeline();
   setInterval(chargerEtat, 15000);
+  setInterval(() => { if (!pipeTimer) chargerPipeline(); }, 15000);
   await CHARGEURS.dashboard();
   await chargerFiches();
   await aller(location.hash.slice(1) || 'dashboard');

@@ -1126,6 +1126,7 @@ function filtrerProduits(liste) {
 
 async function ouvrirProduit(id) {
   S.prodOuvert = id;
+  document.body.classList.add('pm-ouverte');
   S.prodDetail = null;
   render();
   const r = await api('/produits/' + encodeURIComponent(id));
@@ -1135,6 +1136,7 @@ async function ouvrirProduit(id) {
 }
 
 function fermerProduit() {
+  document.body.classList.remove('pm-ouverte');
   S.prodOuvert = null;
   S.prodDetail = null;
   render();

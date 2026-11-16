@@ -548,10 +548,12 @@ th.sorton{color:var(--t700)}
 
 /* modale produit */
 .pmov{position:fixed;inset:0;z-index:70;background:rgba(21,13,8,.52);backdrop-filter:blur(3px);
-  display:flex;align-items:center;justify-content:center;padding:26px 18px;animation:pmFade .16s ease both}
+  display:flex;align-items:flex-start;justify-content:center;padding:0 18px;overflow-y:auto;
+  overscroll-behavior:contain;animation:pmFade .16s ease both}
+body.pm-ouverte{overflow:hidden}
 @keyframes pmFade{from{opacity:0}to{opacity:1}}
-.pmcard{position:relative;width:min(680px,100%);max-height:88vh;overflow-y:auto;
-  padding:22px 24px 20px;box-shadow:var(--sh-lg);animation:pmIn .2s ease both}
+.pmcard{position:relative;width:min(680px,100%);margin:max(4vh,20px) 0 max(6vh,28px);
+  height:fit-content;padding:22px 24px 20px;box-shadow:var(--sh-lg);animation:pmIn .2s ease both}
 @keyframes pmIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
 .pmclose{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:9px;cursor:pointer;
   border:1px solid var(--line);background:var(--card);color:var(--mut);font-size:13px;line-height:1;

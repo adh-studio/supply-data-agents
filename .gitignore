@@ -28,6 +28,7 @@ outbox/
 a_valider/
 validees/
 rejetees/
+archivees/
 journal_qa.jsonl
 /rapport.md
 

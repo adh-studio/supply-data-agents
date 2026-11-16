@@ -19,7 +19,13 @@ API REST JSON :
   GET  /api/rapport                   KPI du rapport hebdo + lien HTML
   POST /api/rapport/generer           regenere rapport.md + docs/*.html
   GET  /api/fiches                    fiches en attente / validees / rejetees
-  POST /api/fiches/generer {limite}   genere des brouillons de fiches
+  GET  /api/fiches/couverture         statut de fiche de chaque produit du
+                                      referentiel + compteurs de couverture
+  GET  /api/fiches/progression        suivi de la generation de masse en cours
+  POST /api/fiches/generer            {limite} brouillons classes top d'abord,
+                                      {produit_id} fiche d'un produit precis,
+                                      {tous:true} toutes les manquantes en
+                                      arriere-plan (409 si deja en cours)
   POST /api/fiches/<id>/approuver     geste humain : approbation
   POST /api/fiches/<id>/rejeter       geste humain : rejet motive
   GET  /api/sante                     gardien_qualite sur ses deux fixtures
@@ -251,6 +257,165 @@ def lister_fiches() -> dict:
     return resultat
 
 
+def calculer_couverture() -> dict:
+    """Couverture du catalogue : statut de fiche de chaque produit + compteurs."""
+    produits = moteur_fiches.lister_couverture(racine=racine())
+    compteurs = {"validee": 0, "en_attente": 0, "rejetee": 0, "aucune": 0}
+    for produit in produits:
+        compteurs[produit["statut"]] = compteurs.get(produit["statut"], 0) + 1
+    nb_couverts = len(produits) - compteurs["aucune"]
+    return {
+        "produits": produits,
+        "nb_produits": len(produits),
+        "nb_couverts": nb_couverts,
+        "nb_manquants": compteurs["aucune"],
+        "compteurs": compteurs,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Generation de masse des fiches : thread + progression sondable
+# ---------------------------------------------------------------------------
+
+_verrou_fiches = threading.Lock()
+_progression_fiches: dict = {
+    "en_cours": False,
+    "total": 0,
+    "faites": 0,
+    "echouees": 0,
+    "produit_courant": None,
+    "terminee": False,
+    "bilan": None,
+    "horodatage_fin": None,
+}
+
+
+def progression_fiches() -> dict:
+    """Instantane de la progression de la generation de masse."""
+    with _verrou_fiches:
+        return dict(_progression_fiches)
+
+
+def reinitialiser_progression_fiches() -> None:
+    """Remet la progression a zero (isolation des tests)."""
+    with _verrou_fiches:
+        _progression_fiches.update(
+            en_cours=False,
+            total=0,
+            faites=0,
+            echouees=0,
+            produit_courant=None,
+            terminee=False,
+            bilan=None,
+            horodatage_fin=None,
+        )
+
+
+def _executer_generation_masse(racine_cible: str, inclure_rejetees: bool) -> None:
+    """Corps du thread : generer_manquantes avec suivi de progression."""
+    def rappel(fait, total, produit):
+        with _verrou_fiches:
+            _progression_fiches["total"] = total
+            _progression_fiches["faites"] = fait
+            _progression_fiches["produit_courant"] = (
+                produit["nom_produit"] if produit else None
+            )
+
+    try:
+        bilan = moteur_fiches.generer_manquantes(
+            racine=racine_cible,
+            inclure_rejetees=inclure_rejetees,
+            rappel=rappel,
+        )
+    except Exception as erreur:  # jamais de thread mort en silence
+        bilan = {
+            "generees": 0,
+            "echouees": 0,
+            "ignorees": 0,
+            "erreur": f"{type(erreur).__name__}: {erreur}",
+        }
+    with _verrou_fiches:
+        _progression_fiches["en_cours"] = False
+        _progression_fiches["terminee"] = True
+        _progression_fiches["produit_courant"] = None
+        _progression_fiches["echouees"] = bilan.get("echouees", 0)
+        _progression_fiches["faites"] = _progression_fiches["total"]
+        _progression_fiches["bilan"] = {
+            cle: bilan.get(cle) for cle in ("generees", "echouees", "ignorees", "erreur")
+            if cle in bilan
+        }
+        _progression_fiches["horodatage_fin"] = (
+            datetime_horodatage()
+        )
+
+
+def datetime_horodatage() -> str:
+    """Horodatage ISO des evenements du cockpit (seconde pres, heure locale)."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def demarrer_generation_fiches(donnees: dict) -> tuple[int, dict]:
+    """POST /api/fiches/generer : par produit, de masse, ou par limite.
+
+    - {"produit_id": "P0043"} : generation synchrone d'un produit precis
+      (option "remplacer" pour archiver une fiche existante) ;
+    - {"tous": true} : toutes les manquantes dans un thread, 409 si une
+      generation est deja en cours (option "inclure_rejetees") ;
+    - {"limite": N} : comportement historique, les tops d'abord.
+    """
+    produit_id = donnees.get("produit_id")
+    if produit_id:
+        try:
+            resultat = moteur_fiches.generer_pour(
+                str(produit_id),
+                racine=racine(),
+                remplacer=bool(donnees.get("remplacer")),
+            )
+        except ValueError as erreur:
+            return 404, {"ok": False, "erreur": str(erreur)}
+        except moteur_fiches.FicheExistanteErreur as erreur:
+            return 409, {"ok": False, "erreur": str(erreur)}
+        return 200, {"ok": True, "resultats": [resultat]}
+
+    if donnees.get("tous"):
+        with _verrou_fiches:
+            if _progression_fiches["en_cours"]:
+                return 409, {
+                    "ok": False,
+                    "erreur": (
+                        "Une generation de fiches est deja en cours : "
+                        "nouvelle generation refusee."
+                    ),
+                }
+            _progression_fiches.update(
+                en_cours=True,
+                total=0,
+                faites=0,
+                echouees=0,
+                produit_courant=None,
+                terminee=False,
+                bilan=None,
+                horodatage_fin=None,
+            )
+        thread = threading.Thread(
+            target=_executer_generation_masse,
+            args=(racine(), bool(donnees.get("inclure_rejetees"))),
+            name="fiches-generation-masse",
+            daemon=True,
+        )
+        thread.start()
+        return 200, {"ok": True, "demarre": True}
+
+    limite = donnees.get("limite", 2)
+    if not isinstance(limite, int) or not (1 <= limite <= 10):
+        return 400, {
+            "ok": False,
+            "erreur": "limite invalide (entier entre 1 et 10)",
+        }
+    resultats = moteur_fiches.generer(limite=limite, racine=racine())
+    return 200, {"ok": True, "resultats": resultats}
+
+
 def lire_journal_qa(limite: int = 20) -> list[dict]:
     """Dernieres entrees du journal d'audit de l'agent Q&A."""
     chemin = moteur_qa.chemin_journal()
@@ -444,6 +609,22 @@ def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
             }
         )
 
+    # Fin d'une generation de masse de fiches produits (cloche du cockpit).
+    progression = progression_fiches()
+    if progression["terminee"] and progression["horodatage_fin"]:
+        bilan = progression.get("bilan") or {}
+        evenements.append(
+            {
+                "id": "fiches-" + progression["horodatage_fin"],
+                "type": "fiches",
+                "horodatage": progression["horodatage_fin"],
+                "generees": int(bilan.get("generees") or 0),
+                "echouees": int(bilan.get("echouees") or 0),
+                "ignorees": int(bilan.get("ignorees") or 0),
+                "erreur": bilan.get("erreur"),
+            }
+        )
+
     en_attente = [
         ligne
         for ligne in journal_ops
@@ -575,6 +756,10 @@ class Cockpit(BaseHTTPRequestHandler):
                 )
             if chemin == "/api/fiches":
                 return self._json(200, {"ok": True, **lister_fiches()})
+            if chemin == "/api/fiches/couverture":
+                return self._json(200, {"ok": True, **calculer_couverture()})
+            if chemin == "/api/fiches/progression":
+                return self._json(200, {"ok": True, **progression_fiches()})
             if chemin == "/api/sante":
                 return self._json(200, {"ok": True, **analyser_sante()})
             if chemin == "/api/pipeline":
@@ -682,14 +867,8 @@ class Cockpit(BaseHTTPRequestHandler):
                 )
 
             if chemin == "/api/fiches/generer":
-                limite = donnees.get("limite", 2)
-                if not isinstance(limite, int) or not (1 <= limite <= 10):
-                    return self._json(
-                        400,
-                        {"ok": False, "erreur": "limite invalide (entier entre 1 et 10)"},
-                    )
-                resultats = moteur_fiches.generer(limite=limite, racine=racine())
-                return self._json(200, {"ok": True, "resultats": resultats})
+                code, reponse = demarrer_generation_fiches(donnees)
+                return self._json(code, reponse)
 
             correspondance = _REGEX_FICHE.match(chemin)
             if correspondance:

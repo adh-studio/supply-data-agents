@@ -38,6 +38,7 @@ CHEMIN_TON_DE_MARQUE = os.path.join(DOSSIER_MODULE, "ton_de_marque.md")
 NOM_DOSSIER_A_VALIDER = "a_valider"
 NOM_DOSSIER_VALIDEES = "validees"
 NOM_DOSSIER_REJETEES = "rejetees"
+NOM_DOSSIER_ARCHIVEES = "archivees"
 
 MODELE_LLM = "claude-sonnet-5"
 
@@ -100,6 +101,80 @@ def lire_produits(limite: int = 3) -> list[dict]:
         LIMIT {limite}
         """
     )
+    return lignes
+
+
+def lire_referentiel() -> list[dict]:
+    """Lit TOUS les produits du referentiel via le mart offre_top_flop_produits.
+
+    Le mart contient l'integralite du catalogue (y compris les produits sans
+    vente), ce qui en fait le referentiel de couverture des fiches.
+    """
+    return requete(
+        """
+        SELECT id_produit, nom_produit, famille, segment, rang_ca
+        FROM offre_top_flop_produits
+        ORDER BY id_produit
+        """
+    )
+
+
+def _ids_dossier(racine: str, nom_dossier: str) -> set[str]:
+    """Identifiants produits presents dans un dossier de fiches (*.md)."""
+    dossier = os.path.join(racine, nom_dossier)
+    if not os.path.isdir(dossier):
+        return set()
+    return {
+        os.path.splitext(nom)[0]
+        for nom in os.listdir(dossier)
+        if nom.endswith(".md")
+    }
+
+
+def statut_fiche(id_produit: str, racine: str = RACINE_PROJET) -> str:
+    """Statut de fiche le plus avance d'un produit.
+
+    validee > en_attente > rejetee > aucune (un produit peut avoir plusieurs
+    etats historiques, par exemple une fiche validee puis un nouveau brouillon).
+    """
+    for nom_dossier, statut in (
+        (NOM_DOSSIER_VALIDEES, "validee"),
+        (NOM_DOSSIER_A_VALIDER, "en_attente"),
+        (NOM_DOSSIER_REJETEES, "rejetee"),
+    ):
+        if os.path.exists(os.path.join(racine, nom_dossier, f"{id_produit}.md")):
+            return statut
+    return "aucune"
+
+
+def lister_couverture(racine: str = RACINE_PROJET) -> list[dict]:
+    """Pour CHAQUE produit du referentiel, son statut de fiche.
+
+    Retourne une ligne par produit : id_produit, nom_produit, famille,
+    segment et statut (validee / en_attente / rejetee / aucune, le plus
+    avance l'emportant).
+    """
+    presents = {
+        "validee": _ids_dossier(racine, NOM_DOSSIER_VALIDEES),
+        "en_attente": _ids_dossier(racine, NOM_DOSSIER_A_VALIDER),
+        "rejetee": _ids_dossier(racine, NOM_DOSSIER_REJETEES),
+    }
+    lignes = []
+    for produit in lire_referentiel():
+        statut = "aucune"
+        for candidat in ("validee", "en_attente", "rejetee"):
+            if produit["id_produit"] in presents[candidat]:
+                statut = candidat
+                break
+        lignes.append(
+            {
+                "id_produit": produit["id_produit"],
+                "nom_produit": produit["nom_produit"],
+                "famille": produit["famille"],
+                "segment": produit["segment"],
+                "statut": statut,
+            }
+        )
     return lignes
 
 
@@ -354,6 +429,42 @@ def lire_fiche(chemin: str) -> tuple[dict, str]:
     return entete, correspondance.group(2)
 
 
+def _generer_et_deposer(produit: dict, racine: str) -> dict:
+    """Genere la fiche d'UN produit, garde-fous compris, depot en a_valider/.
+
+    Retourne le meme compte rendu unitaire que generer() :
+    - statut "en_attente" avec le chemin du fichier depose, ou
+    - statut "rejetee" avec la liste des motifs (aucun fichier ecrit).
+    """
+    dossier_attente = _dossier(racine, NOM_DOSSIER_A_VALIDER)
+    fiche, mode = generer_fiche(produit)
+    motifs = verifier_fiche(fiche)
+    if motifs:
+        return {
+            "id_produit": produit["id_produit"],
+            "statut": "rejetee",
+            "mode": mode,
+            "motifs": motifs,
+            "chemin": None,
+        }
+    chemin = os.path.join(dossier_attente, f"{produit['id_produit']}.md")
+    entete = {
+        "id_produit": produit["id_produit"],
+        "nom_produit": produit["nom_produit"],
+        "statut": "en_attente",
+        "mode": mode,
+        "genere_le": datetime.date.today().isoformat(),
+    }
+    _ecrire_fiche(chemin, entete, fiche)
+    return {
+        "id_produit": produit["id_produit"],
+        "statut": "en_attente",
+        "mode": mode,
+        "motifs": [],
+        "chemin": chemin,
+    }
+
+
 def generer(limite: int = 3, racine: str = RACINE_PROJET) -> list[dict]:
     """Genere les fiches, applique les garde-fous, depose en a_valider/.
 
@@ -361,41 +472,116 @@ def generer(limite: int = 3, racine: str = RACINE_PROJET) -> list[dict]:
     - statut "en_attente" avec le chemin du fichier depose, ou
     - statut "rejetee" avec la liste des motifs (aucun fichier ecrit).
     """
-    dossier_attente = _dossier(racine, NOM_DOSSIER_A_VALIDER)
-    resultats = []
-    for produit in lire_produits(limite):
-        fiche, mode = generer_fiche(produit)
-        motifs = verifier_fiche(fiche)
-        if motifs:
-            resultats.append(
-                {
-                    "id_produit": produit["id_produit"],
-                    "statut": "rejetee",
-                    "mode": mode,
-                    "motifs": motifs,
-                    "chemin": None,
-                }
+    return [
+        _generer_et_deposer(produit, racine) for produit in lire_produits(limite)
+    ]
+
+
+class FicheExistanteErreur(Exception):
+    """Levee quand une fiche en attente ou validee existe deja."""
+
+
+def _archiver_fiche(id_produit: str, racine: str) -> list[str]:
+    """Archive les fiches existantes (a_valider/ et validees/) d'un produit.
+
+    Les fichiers sont deplaces vers archivees/ avec un suffixe horodate,
+    pour garder l'historique sans bloquer la regeneration. Retourne les
+    chemins archives.
+    """
+    dossier_archives = _dossier(racine, NOM_DOSSIER_ARCHIVEES)
+    horodatage = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    archives = []
+    for nom_dossier in (NOM_DOSSIER_A_VALIDER, NOM_DOSSIER_VALIDEES):
+        chemin = os.path.join(racine, nom_dossier, f"{id_produit}.md")
+        if os.path.exists(chemin):
+            cible = os.path.join(
+                dossier_archives, f"{id_produit}-{nom_dossier}-{horodatage}.md"
             )
-            continue
-        chemin = os.path.join(dossier_attente, f"{produit['id_produit']}.md")
-        entete = {
-            "id_produit": produit["id_produit"],
-            "nom_produit": produit["nom_produit"],
-            "statut": "en_attente",
-            "mode": mode,
-            "genere_le": datetime.date.today().isoformat(),
-        }
-        _ecrire_fiche(chemin, entete, fiche)
-        resultats.append(
-            {
-                "id_produit": produit["id_produit"],
-                "statut": "en_attente",
-                "mode": mode,
-                "motifs": [],
-                "chemin": chemin,
-            }
+            os.replace(chemin, cible)
+            archives.append(cible)
+    return archives
+
+
+def generer_pour(
+    id_produit: str, racine: str = RACINE_PROJET, remplacer: bool = False
+) -> dict:
+    """Genere la fiche d'un produit precis du referentiel.
+
+    - id inconnu du referentiel : ValueError avec un message clair ;
+    - fiche deja en attente ou validee : FicheExistanteErreur, sauf si
+      remplacer=True (l'ancienne fiche est alors archivee en archivees/).
+    Une fiche rejetee ne bloque jamais la regeneration.
+    """
+    produits = [
+        p for p in lire_referentiel() if p["id_produit"] == id_produit
+    ]
+    if not produits:
+        raise ValueError(
+            f"Produit inconnu du referentiel : {id_produit}. "
+            "Voir python -m fiches_produits couverture pour la liste."
         )
-    return resultats
+    statut = statut_fiche(id_produit, racine)
+    archives: list[str] = []
+    if statut in ("validee", "en_attente"):
+        if not remplacer:
+            raise FicheExistanteErreur(
+                f"Une fiche {statut.replace('_', ' ')} existe deja pour "
+                f"{id_produit} : generation refusee. Utilisez --remplacer "
+                "pour archiver l'ancienne et regenerer."
+            )
+        archives = _archiver_fiche(id_produit, racine)
+    resultat = dict(_generer_et_deposer(produits[0], racine))
+    resultat["archives"] = archives
+    return resultat
+
+
+def generer_manquantes(
+    racine: str = RACINE_PROJET,
+    inclure_rejetees: bool = False,
+    rappel=None,
+) -> dict:
+    """Genere une fiche pour tous les produits du referentiel sans fiche.
+
+    Cibles : statut "aucune" (et "rejetee" si inclure_rejetees=True). La
+    generation est sequentielle et continue malgre les echecs individuels
+    (exception d'un moteur ou refus des garde-fous). rappel, si fourni, est
+    appele avant chaque produit avec (fait, total, produit) pour suivre la
+    progression.
+
+    Retourne un bilan : {"generees", "echouees", "ignorees", "resultats"}.
+    """
+    cibles_statuts = {"aucune"} | ({"rejetee"} if inclure_rejetees else set())
+    couverture = lister_couverture(racine)
+    cibles = [p for p in couverture if p["statut"] in cibles_statuts]
+    ignorees = len(couverture) - len(cibles)
+
+    generees, echouees, resultats = 0, 0, []
+    for rang, produit in enumerate(cibles):
+        if rappel is not None:
+            rappel(rang, len(cibles), produit)
+        try:
+            resultat = _generer_et_deposer(produit, racine)
+        except Exception as erreur:  # un echec n'arrete jamais la serie
+            resultat = {
+                "id_produit": produit["id_produit"],
+                "statut": "echec",
+                "mode": None,
+                "motifs": [f"{type(erreur).__name__}: {erreur}"],
+                "chemin": None,
+            }
+        if resultat["statut"] == "en_attente":
+            generees += 1
+        else:
+            echouees += 1
+        resultats.append(resultat)
+    if rappel is not None:
+        rappel(len(cibles), len(cibles), None)
+    return {
+        "generees": generees,
+        "echouees": echouees,
+        "ignorees": ignorees,
+        "resultats": resultats,
+    }
 
 
 def approuver(id_produit: str, racine: str = RACINE_PROJET) -> str:

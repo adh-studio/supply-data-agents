@@ -440,3 +440,4 @@ tbody tr:last-child td{border-bottom:none}
 .chgdesc{display:flex;flex-direction:column;gap:1px;line-height:1.45}
 .notifitem.contrat{border-left:3px solid var(--t600)}
 .notifitem.contrat .ntitle svg{width:13px;height:13px;vertical-align:-2px;margin-right:4px;color:var(--t600)}
+.ncontrat{font-size:12.3px;line-height:1.55;color:var(--ink2);font-weight:620;margin:2px 0 9px}

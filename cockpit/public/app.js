@@ -735,14 +735,17 @@ function vContrats() {
     const corps = el('div', 'cbody');
     if ((c.changelog || []).length) {
       const n = c.changelog.length;
-      corps.appendChild(el('details', 'chglog', `
+      // ?chglog=1 : historique deplie au chargement (demo, captures)
+      const detailsChglog = el('details', 'chglog', `
         <summary>${ICONS.contrat} Historique du contrat · ${n} amendement${n > 1 ? 's' : ''}</summary>
         <div class="chgliste">${c.changelog.map(a => `
           <div class="chgrow">
             <span class="pill terra">v${esc(a.version)}</span>
             <span class="chgdesc"><b>${esc(a.description)}</b>
               <span class="sub2">${esc(a.date)} · par ${esc(a.auteur)}</span></span>
-          </div>`).join('')}</div>`));
+          </div>`).join('')}</div>`);
+      if (params.get('chglog') === '1') detailsChglog.open = true;
+      corps.appendChild(detailsChglog);
     }
     if (c.fraicheur) {
       const fok = c.fraicheur.statut === 'conforme';
@@ -802,7 +805,7 @@ function notifItem(n) {
     return `<div class="notifitem contrat${nonLu ? ' nonlu' : ''}">
       <div class="nhead"><span class="ntitle">${ICONS.contrat} Amendement de contrat</span>
         <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
-      <div class="nrow"><span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${esc(n.resume)}</span></div>
+      <div class="ncontrat">${esc(n.resume)}</div>
       <a class="btn sm nbtn" href="#contrats">Ouvrir la vue Contrats</a>
     </div>`;
   }

@@ -743,6 +743,9 @@ if (params.get('motion') === '0') {
 }
 // ?panneau=produit : ouvre le panneau de creation (captures)
 const panneauAuto = params.get('panneau');
+// ?apercu=Nom : pre-remplit le formulaire Gouvernance et montre l'apercu
+// d'impact au chargement (demo, captures)
+const apercuAuto = params.get('apercu');
 
 // skeleton de premier chargement puis boot
 $('#view').innerHTML = `<div class="kpis">${'<div class="kpi"><div class="skel" style="height:14px;width:60%"></div><div class="skel" style="height:34px;width:40%;margin-top:10px"></div></div>'.repeat(4)}</div>
@@ -754,4 +757,8 @@ $('#view').innerHTML = `<div class="kpis">${'<div class="kpi"><div class="skel" 
   await rafraichir(['refs', 'produits']);
   await aller(location.hash.slice(1) || 'produits');
   if (panneauAuto === 'produit' && S.refs) formulaireProduit(null);
+  if (apercuAuto && S.page === 'gouvernance' && S.gouv) {
+    const verdict = validerNomFamille(apercuAuto);
+    if (!verdict.erreur) { S.gouvApercu = verdict.nom; render(); }
+  }
 })();

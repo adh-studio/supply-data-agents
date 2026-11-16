@@ -429,15 +429,18 @@ def lire_fiche(chemin: str) -> tuple[dict, str]:
     return entete, correspondance.group(2)
 
 
-def _generer_et_deposer(produit: dict, racine: str) -> dict:
+def _generer_et_deposer(produit: dict, racine: str, generateur=None) -> dict:
     """Genere la fiche d'UN produit, garde-fous compris, depot en a_valider/.
+
+    generateur, si fourni, remplace la chaine de moteurs par defaut : il
+    recoit le produit et retourne (fiche, mode).
 
     Retourne le meme compte rendu unitaire que generer() :
     - statut "en_attente" avec le chemin du fichier depose, ou
     - statut "rejetee" avec la liste des motifs (aucun fichier ecrit).
     """
     dossier_attente = _dossier(racine, NOM_DOSSIER_A_VALIDER)
-    fiche, mode = generer_fiche(produit)
+    fiche, mode = (generateur or generer_fiche)(produit)
     motifs = verifier_fiche(fiche)
     if motifs:
         return {
@@ -479,6 +482,28 @@ def generer(limite: int = 3, racine: str = RACINE_PROJET) -> list[dict]:
 
 class FicheExistanteErreur(Exception):
     """Levee quand une fiche en attente ou validee existe deja."""
+
+
+def _gabarit_en_filet(produit: dict) -> tuple[dict, str]:
+    """Generateur de repli : gabarit deterministe, toujours conforme."""
+    return generer_fiche_gabarit(produit), "gabarit"
+
+
+def _deposer_avec_filet(produit: dict, racine: str) -> dict:
+    """Depose la fiche d'un produit avec le gabarit en filet de securite.
+
+    La chaine de moteurs retombe deja sur le gabarit quand un moteur IA
+    echoue (exception) ; ce filet couvre l'autre cas : un moteur IA qui
+    repond mais dont le brouillon est refuse par les garde-fous. Le gabarit
+    deterministe prend alors le relais, et son brouillon repasse par les
+    memes garde-fous avant depot.
+    """
+    resultat = _generer_et_deposer(produit, racine)
+    if resultat["statut"] == "rejetee" and resultat["mode"] != "gabarit":
+        motifs_ia = resultat["motifs"]
+        resultat = _generer_et_deposer(produit, racine, generateur=_gabarit_en_filet)
+        resultat["motifs_moteur_ia"] = motifs_ia
+    return resultat
 
 
 def _archiver_fiche(id_produit: str, racine: str) -> list[str]:
@@ -530,7 +555,7 @@ def generer_pour(
                 "pour archiver l'ancienne et regenerer."
             )
         archives = _archiver_fiche(id_produit, racine)
-    resultat = dict(_generer_et_deposer(produits[0], racine))
+    resultat = dict(_deposer_avec_filet(produits[0], racine))
     resultat["archives"] = archives
     return resultat
 
@@ -544,9 +569,10 @@ def generer_manquantes(
 
     Cibles : statut "aucune" (et "rejetee" si inclure_rejetees=True). La
     generation est sequentielle et continue malgre les echecs individuels
-    (exception d'un moteur ou refus des garde-fous). rappel, si fourni, est
-    appele avant chaque produit avec (fait, total, produit) pour suivre la
-    progression.
+    (exception d'un moteur ou refus des garde-fous). Si le brouillon d'un
+    moteur IA est refuse par les garde-fous, le gabarit deterministe prend
+    le relais (filet de securite). rappel, si fourni, est appele avant
+    chaque produit avec (fait, total, produit) pour suivre la progression.
 
     Retourne un bilan : {"generees", "echouees", "ignorees", "resultats"}.
     """
@@ -560,7 +586,7 @@ def generer_manquantes(
         if rappel is not None:
             rappel(rang, len(cibles), produit)
         try:
-            resultat = _generer_et_deposer(produit, racine)
+            resultat = _deposer_avec_filet(produit, racine)
         except Exception as erreur:  # un echec n'arrete jamais la serie
             resultat = {
                 "id_produit": produit["id_produit"],

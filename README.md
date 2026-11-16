@@ -156,6 +156,9 @@ python -m fiches_produits generer --limite 3         # comportement historique, 
 La couverture retient le statut le plus avance par produit (validee puis
 en attente puis rejetee puis aucune). `--tous` continue malgre les echecs
 individuels et affiche un bilan : generees, echecs, produits deja couverts.
+Pour ces generations ciblees, le gabarit deterministe sert de filet de
+securite : si le brouillon du moteur IA est refuse par les garde-fous, le
+gabarit prend le relais et son brouillon repasse par les memes garde-fous.
 Cote cockpit, la vue Fiches produits montre la jauge de couverture, lance la
 generation de masse en arriere-plan (progression sondable, 409 si une
 generation tourne deja) et propose un bouton Generer par produit sans fiche.

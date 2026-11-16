@@ -195,6 +195,68 @@ def test_generer_manquantes_continue_apres_un_echec(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Filet de securite : le gabarit prend le relais d'un moteur IA non conforme
+# ---------------------------------------------------------------------------
+
+
+def test_gabarit_conforme_pour_des_noms_sans_matiere_ni_dimension():
+    """Le gabarit doit TOUJOURS produire une fiche conforme : c'est le filet.
+
+    Noms de produits electroniques reels (chiffres, sigles, aucune matiere
+    ni dimension deco reconnue) qui ont mis en echec le moteur IA.
+    """
+    from fiches_produits import garde_fous
+
+    noms = (
+        "Powerbank 20000 mAh charge rapide",
+        "Cable USB-C tresse 1m",
+        "Coque silicone iPhone 15",
+        "Montre connectee Serie 9 AMOLED",
+        "Montre GPS sport multisport",
+        "Ampoule connectee WiFi",
+    )
+    for nom in noms:
+        fiche = moteur.generer_fiche_gabarit(
+            {"id_produit": "PXXX", "nom_produit": nom, "famille": "Electronique"}
+        )
+        assert garde_fous.verifier_fiche(fiche) == [], nom
+
+
+def test_filet_gabarit_quand_le_moteur_ia_est_non_conforme(tmp_path, monkeypatch):
+    """Brouillon IA refuse par les garde-fous : le gabarit prend le relais."""
+    _sans_cle_api(monkeypatch)
+    racine = str(tmp_path)
+    original = moteur.generer_fiche
+
+    def moteur_ia_non_conforme(produit):
+        if produit["id_produit"] == "P007":
+            # Simule un moteur IA qui repond, mais hors bornes des garde-fous.
+            return {
+                "titre": "Un tapis a 49 euros seulement",
+                "description": "Trop court.",
+                "points_forts": ["seul point"],
+            }, "claude_code"
+        return original(produit)
+
+    monkeypatch.setattr(moteur, "generer_fiche", moteur_ia_non_conforme)
+
+    # generer_pour : la fiche atterrit quand meme, en mode gabarit,
+    # avec la trace des motifs du brouillon IA refuse.
+    resultat = moteur.generer_pour("P007", racine=racine)
+    assert resultat["statut"] == "en_attente"
+    assert resultat["mode"] == "gabarit"
+    assert any("description hors bornes" in m for m in resultat["motifs_moteur_ia"])
+    assert os.path.exists(resultat["chemin"])
+
+    # generer_manquantes : aucun echec, tout le referentiel est couvert.
+    bilan = moteur.generer_manquantes(racine=racine)
+    assert bilan["echouees"] == 0
+    assert bilan["generees"] == NB_PRODUITS_FIXTURE - 1
+    statuts = {l["statut"] for l in moteur.lister_couverture(racine)}
+    assert statuts == {"en_attente"}
+
+
+# ---------------------------------------------------------------------------
 # API cockpit : couverture, generation par produit, masse + progression
 # ---------------------------------------------------------------------------
 

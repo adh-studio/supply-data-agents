@@ -31,6 +31,7 @@ const ICONS = {
   pipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
   contrat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 16c.8-1.3 1.6-2 2.4-2 1.2 0 .9 2 2 2 .8 0 1.2-.6 2-.6"/><path d="M9 11h6"/></svg>',
   boussole: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.2 5.4-5.4 2.2 2.2-5.4z"/></svg>',
+  etagere: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18M21 3v18"/><path d="M3 10h18M3 17h18"/><path d="M8 10V6.5h4V10"/><path d="M12 17v-3.5h4V17"/></svg>',
 };
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
@@ -39,6 +40,8 @@ const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, r
   pipeline: null, pipeSel: null,
   contrats: null, contratOuverts: {}, contratsEnCours: false,
   catalogue: null, preQuestion: null,
+  produits: null, prodFiltres: { famille: [], stock: [], segment: [], fiche: [] },
+  prodTri: { col: 'chiffre_affaires', desc: true }, prodOuvert: null, prodDetail: null,
   notifs: [], nbEnAttente: 0, notifsPretes: false, bandeauFerme: false };
 
 const SUGGESTIONS = [
@@ -1046,6 +1049,270 @@ function vCatalogue() {
   return v;
 }
 
+// ---------------- produits : le catalogue consultable ----------------
+async function chargerProduits() {
+  try { const r = await api('/produits'); if (r.ok) S.produits = r.produits; } catch (e) { /* API injoignable */ }
+}
+
+const mga = n => nfr(n, 0) + ' MGA';
+// forme courte pour les mini-KPI (les grands montants ariary sont longs)
+const mgaCourt = n => n >= 1e9 ? nfr(n / 1e9, 2) + ' Mrd MGA'
+  : n >= 1e6 ? nfr(n / 1e6, 1) + ' M MGA' : mga(n);
+
+const LIB_SEGMENT = {
+  top: ['top', 'seg-top'], flop: ['flop', 'seg-flop'],
+  coeur_de_gamme: ['coeur de gamme', 'seg-coeur'], sans_vente: ['sans vente', 'seg-sans'],
+};
+const LIB_STOCK = {
+  rupture: ['rupture', 'bad'], dormant: ['dormant', 'violet'],
+  surstock: ['surstock', 'warn'], sain: ['sain', 'ok'], aucun: ['aucun stock', 'neutre'],
+};
+
+const segPill = seg => {
+  const [lib, cls] = LIB_SEGMENT[seg] || [seg, 'seg-sans'];
+  return `<span class="pill ${cls}">${esc(lib)}</span>`;
+};
+const stockChip = st => {
+  const [lib, cls] = LIB_STOCK[st] || [st, 'neutre'];
+  return `<span class="chip ${cls}"><span class="dot2" style="background:var(--${cls === 'ok' ? 'ok' : cls === 'warn' ? 'warn' : cls === 'bad' ? 'bad' : cls === 'violet' ? 'violet' : 'mut2'})"></span>${esc(lib)}</span>`;
+};
+const fichePill = st => {
+  const [lib, cls] = STATUT_FICHE[st] || [st, 'neutre'];
+  return `<span class="chip ${cls}">${esc(lib)}</span>`;
+};
+const margeTexte = taux => {
+  if (taux === null || taux === undefined) return '<span class="sub2">sans CA</span>';
+  const pct = taux * 100;
+  const cls = pct >= 40 ? 'margehi' : pct >= 25 ? 'margemid' : 'margelo';
+  return `<span class="mono ${cls}">${nfr(pct, 1)} %</span>`;
+};
+
+// colonnes du grand tableau : [cle, libelle, type, alignement droite]
+const PROD_COLS = [
+  ['nom_produit', 'Produit', 'txt', false],
+  ['famille', 'Famille', 'txt', false],
+  ['segment', 'Segment', 'txt', false],
+  ['quantite_vendue', 'Ventes', 'num', true],
+  ['chiffre_affaires', 'CA', 'num', true],
+  ['taux_marge_produit', 'Marge', 'num', true],
+  ['stock_total', 'Stock total', 'num', true],
+  ['couverture_min_jours', 'Couverture min', 'num', true],
+  ['statut_stock_pire', 'Statut stock', 'txt', false],
+  ['statut_fiche', 'Fiche', 'txt', false],
+];
+
+function trierProduits(liste) {
+  const { col, desc } = S.prodTri;
+  const type = (PROD_COLS.find(c => c[0] === col) || [])[2] || 'txt';
+  return [...liste].sort((a, b) => {
+    const va = a[col], vb = b[col];
+    // les valeurs absentes vont toujours en bas, quel que soit le sens
+    if (va === null || va === undefined) return (vb === null || vb === undefined) ? 0 : 1;
+    if (vb === null || vb === undefined) return -1;
+    const cmp = type === 'num' ? va - vb : String(va).localeCompare(String(vb), 'fr');
+    return desc ? -cmp : cmp;
+  });
+}
+
+function filtrerProduits(liste) {
+  const f = S.prodFiltres;
+  return liste.filter(p =>
+    (!f.famille.length || f.famille.includes(p.famille))
+    && (!f.stock.length || f.stock.includes(p.statut_stock_pire))
+    && (!f.segment.length || f.segment.includes(p.segment))
+    && (!f.fiche.length || f.fiche.includes(p.statut_fiche))
+    && (!S.q || (p.nom_produit + ' ' + p.id_produit + ' ' + p.famille).toLowerCase().includes(S.q)));
+}
+
+async function ouvrirProduit(id) {
+  S.prodOuvert = id;
+  S.prodDetail = null;
+  render();
+  const r = await api('/produits/' + encodeURIComponent(id));
+  if (r.ok) S.prodDetail = r;
+  else { toast('⚠️ ' + esc(r.erreur || 'produit introuvable')); S.prodOuvert = null; }
+  render();
+}
+
+function fermerProduit() {
+  S.prodOuvert = null;
+  S.prodDetail = null;
+  render();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.prodOuvert) fermerProduit();
+});
+
+function modalProduit() {
+  const ov = el('div', 'pmov');
+  const carte = el('div', 'pmcard card');
+  const d = S.prodDetail;
+  if (!d) {
+    carte.innerHTML = `<div class="empty" style="padding:48px 24px">Chargement du produit ${esc(S.prodOuvert)}</div>
+      <button class="pmclose" title="Fermer" aria-label="Fermer">✕</button>`;
+  } else {
+    const fiche = d.fiche;
+    carte.innerHTML = `
+      <button class="pmclose" title="Fermer" aria-label="Fermer">✕</button>
+      <div class="pmhead">
+        <h2>${esc(d.nom_produit)}</h2>
+        <div class="pmid sub2">${esc(d.id_produit)} · rang CA n°${d.rang_ca}</div>
+        <div class="pmpills">
+          <span class="pill terra">${esc(d.famille)}</span>
+          ${segPill(d.segment)}
+          ${fichePill(d.statut_fiche)}
+        </div>
+      </div>
+      <div class="pmkpis">
+        <div class="pmkpi"><span class="lbl">Chiffre d'affaires</span><b>${mgaCourt(d.chiffre_affaires)}</b>
+          <span class="sub2">${mga(d.chiffre_affaires)}</span></div>
+        <div class="pmkpi"><span class="lbl">Marge</span><b>${d.taux_marge_produit === null ? 'sans CA' : nfr(d.taux_marge_produit * 100, 1) + ' %'}</b>
+          <span class="sub2">${mgaCourt(d.marge_brute)} de marge brute</span></div>
+        <div class="pmkpi"><span class="lbl">Ventes</span><b>${nfr(d.quantite_vendue)} u.</b></div>
+        <div class="pmkpi"><span class="lbl">Stock total</span><b>${nfr(d.stock_total)} u.</b>
+          <span class="sub2">${d.nb_entrepots} entrepot${d.nb_entrepots > 1 ? 's' : ''}</span></div>
+      </div>
+      <div class="pmsec"><h3>Stock par entrepot</h3>
+        ${d.entrepots.length ? `<div class="pmtablewrap"><table>
+          <thead><tr><th>Entrepot</th><th style="text-align:right">Quantite</th><th style="text-align:right">Couverture</th><th>Statut</th></tr></thead>
+          <tbody>${d.entrepots.map(e2 => `<tr>
+            <td>${esc(e2.nom_entrepot)}</td>
+            <td class="mono" style="text-align:right">${nfr(e2.quantite)} u.</td>
+            <td class="mono" style="text-align:right">${e2.couverture === null ? '<span class="sub2">jamais vendu</span>' : nfr(e2.couverture, 1) + ' j'}</td>
+            <td>${stockChip(e2.statut)}</td></tr>`).join('')}</tbody>
+        </table></div>` : '<div class="pmempty">Aucune ligne de stock pour ce produit.</div>'}
+      </div>
+      <div class="pmsec"><h3>Fiche produit</h3>
+        ${fiche ? `<div class="pmfiche">
+          <div class="frow" style="margin-bottom:7px">
+            <span class="pill">${libMode(fiche.mode)}</span>
+            ${fichePill(d.statut_fiche)}
+            ${fiche.genere_le ? `<span class="sub2">generee le ${esc(fiche.genere_le)}</span>` : ''}
+          </div>
+          <h4>${esc(fiche.titre || d.nom_produit)}</h4>
+          <p>${esc(fiche.description)}</p>
+          <ul>${(fiche.points_forts || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+        </div>` : `<div class="pmempty">Aucune fiche pour ce produit.
+          <a href="#fiches">Generer dans la vue Fiches →</a></div>`}
+      </div>
+      <div class="pmfoot">
+        <button class="btn primary" id="pmAsk">${ICONS.chat} Poser une question sur ce produit</button>
+      </div>`;
+    carte.querySelector('#pmAsk').onclick = () => {
+      S.preQuestion = `Que peux-tu me dire sur le produit ${d.nom_produit} ?`;
+      S.prodOuvert = null;
+      S.prodDetail = null;
+      location.hash = '#assistant';
+    };
+  }
+  carte.querySelector('.pmclose').onclick = fermerProduit;
+  ov.onclick = e => { if (e.target === ov) fermerProduit(); };
+  ov.appendChild(carte);
+  return ov;
+}
+
+function groupeChips(bar, libelle, cles, valeurs, libelles) {
+  const grp = el('div', 'fgrp');
+  grp.appendChild(el('span', 'fgrplbl', libelle));
+  for (const val of valeurs) {
+    const actif = cles.includes(val);
+    const chip = el('button', 'fchip' + (actif ? ' on' : ''), esc(libelles ? libelles(val) : val));
+    chip.onclick = () => {
+      if (actif) cles.splice(cles.indexOf(val), 1);
+      else cles.push(val);
+      render();
+    };
+    grp.appendChild(chip);
+  }
+  bar.appendChild(grp);
+}
+
+function vProduits() {
+  const v = el('div');
+  const liste = S.produits;
+  if (!liste) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
+
+  // bandeau : les chiffres globaux du catalogue
+  const familles = [...new Set(liste.map(p => p.famille))].sort((a, b) => a.localeCompare(b, 'fr'));
+  const nbRupture = liste.filter(p => p.statut_stock_pire === 'rupture').length;
+  const nbSansFiche = liste.filter(p => p.statut_fiche === 'aucune').length;
+  v.appendChild(el('div', 'card cbande', `
+    <div class="cbandeleft">
+      <span class="ico terra cbico">${ICONS.etagere}</span>
+      <div>
+        <b>${liste.length} produits · ${familles.length} familles · ${nbRupture} en rupture · ${nbSansFiche} sans fiche</b>
+        <div class="sub2">Referentiel offre_top_flop_produits joint au stock et aux fiches · cliquer une ligne pour le detail</div>
+      </div>
+    </div>
+    ${nbRupture ? `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>${nbRupture} rupture${nbRupture > 1 ? 's' : ''}</span>` : ''}
+    ${nbSansFiche ? `<span class="pill">${nbSansFiche} sans fiche</span>` : `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>catalogue couvert</span>`}`));
+
+  // filtres cumulables par chips
+  const f = S.prodFiltres;
+  const bar = el('div', 'filters prodfilters');
+  groupeChips(bar, 'Famille', f.famille, familles);
+  groupeChips(bar, 'Stock', f.stock, ['rupture', 'dormant', 'surstock', 'sain'], s => LIB_STOCK[s][0]);
+  groupeChips(bar, 'Segment', f.segment, ['top', 'flop', 'coeur_de_gamme', 'sans_vente'], s => LIB_SEGMENT[s][0]);
+  groupeChips(bar, 'Fiche', f.fiche, ['validee', 'en_attente', 'aucune'], s => STATUT_FICHE[s][0]);
+  if (f.famille.length || f.stock.length || f.segment.length || f.fiche.length) {
+    const reset = el('button', 'btn ghost sm', '✕ Reinitialiser');
+    reset.onclick = () => { S.prodFiltres = { famille: [], stock: [], segment: [], fiche: [] }; render(); };
+    bar.appendChild(reset);
+  }
+  v.appendChild(bar);
+
+  // le grand tableau triable
+  const visibles = trierProduits(filtrerProduits(liste));
+  const [c, b] = card('Catalogue', `${visibles.length} produit(s) affiche(s) sur ${liste.length} · cliquer un en-tete pour trier`, { flush: true });
+  if (!visibles.length) {
+    b.innerHTML = '<div class="empty" style="padding:24px"><span class="big">🔎</span>Aucun produit ne correspond aux filtres</div>';
+  } else {
+    const wrap = el('div', 'tablewrap prodwrap');
+    const t = el('table', 'prodtable');
+    const thead = el('thead');
+    const trh = el('tr');
+    for (const [cle, lib, , droite] of PROD_COLS) {
+      const actif = S.prodTri.col === cle;
+      const th = el('th', 'sortable' + (actif ? ' sorton' : ''),
+        `${esc(lib)}<span class="sortarrow">${actif ? (S.prodTri.desc ? '▾' : '▴') : ''}</span>`);
+      if (droite) th.style.textAlign = 'right';
+      th.onclick = () => {
+        if (S.prodTri.col === cle) S.prodTri.desc = !S.prodTri.desc;
+        else S.prodTri = { col: cle, desc: true };
+        render();
+      };
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    t.appendChild(thead);
+    const tb = el('tbody');
+    for (const p of visibles) {
+      const tr = el('tr', 'prodrow', `
+        <td><span class="cellmain"><span class="initials">${esc((p.nom_produit || '?').slice(0, 2).toUpperCase())}</span>
+          <span class="txt"><b>${esc(p.nom_produit)}</b><span class="sub2">${esc(p.id_produit)}</span></span></span></td>
+        <td><span class="pill terra">${esc(p.famille)}</span></td>
+        <td>${segPill(p.segment)}</td>
+        <td class="mono" style="text-align:right">${nfr(p.quantite_vendue)}</td>
+        <td class="mono" style="text-align:right" title="${mga(p.chiffre_affaires)}">${mgaCourt(p.chiffre_affaires)}</td>
+        <td style="text-align:right">${margeTexte(p.taux_marge_produit)}</td>
+        <td class="mono" style="text-align:right">${nfr(p.stock_total)}</td>
+        <td class="mono" style="text-align:right">${p.couverture_min_jours === null ? '<span class="sub2">jamais vendu</span>' : nfr(p.couverture_min_jours, 1) + ' j'}</td>
+        <td>${stockChip(p.statut_stock_pire)}</td>
+        <td>${fichePill(p.statut_fiche)}</td>`);
+      tr.onclick = () => ouvrirProduit(p.id_produit);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    wrap.appendChild(t);
+    b.appendChild(wrap);
+  }
+  v.appendChild(c);
+
+  if (S.prodOuvert) v.appendChild(modalProduit());
+  return v;
+}
+
 // ---------------- notifications ----------------
 // Cloche de la topbar : publications SupplyOps (modifications + impact KPI)
 // et saisies en attente de publication. Non-lus = horodatage > dernier vu
@@ -1208,6 +1475,7 @@ async function chargerRapport() { const r = await api('/rapport'); if (r.ok) S.r
 
 const CHARGEURS = {
   dashboard: async () => { const r = await api('/kpis'); if (r.ok) S.kpis = r; },
+  produits: chargerProduits,
   assistant: async () => { const j = await api('/qa/journal'); if (j.ok) S.journal = j.journal; },
   alertes: async () => { const r = await api('/ruptures'); if (r.ok) S.ruptures = r.ruptures; },
   fiches: async () => { await Promise.all([chargerFiches(), chargerCouverture(), chargerFichesProg()]); if (S.fichesProg && S.fichesProg.en_cours) sonderGenerationFiches(); },
@@ -1221,6 +1489,7 @@ const CHARGEURS = {
 // ---------------- router / shell ----------------
 const PAGES = [
   ['dashboard', 'Dashboard', ICONS.dash, 1],
+  ['produits', 'Produits', ICONS.etagere, 1],
   ['rapport', 'Rapport hebdo', ICONS.rapport, 1],
   ['pipeline', 'Pipeline', ICONS.pipe, 1],
   ['contrats', 'Contrats', ICONS.contrat, 1],
@@ -1232,6 +1501,7 @@ const PAGES = [
 ];
 const SUBS = {
   dashboard: () => 'Vue d\'ensemble des 5 marts · ' + new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(Date.now()),
+  produits: () => 'Le catalogue consultable : ventes, marge, stock et fiche de chaque produit',
   assistant: () => 'Question en francais, SQL garde, reponse chiffree',
   alertes: () => 'Ruptures detectees et reappro suggere',
   fiches: () => 'Brouillons generes, publication par geste humain',
@@ -1241,7 +1511,7 @@ const SUBS = {
   contrats: () => 'Contrats de donnees ODCS, verdict regle par regle',
   catalogue: () => 'Marketplace des data products : quoi consommer, a qui parler',
 };
-const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline, contrats: vContrats, catalogue: vCatalogue };
+const VIEWS = { dashboard: vDashboard, produits: vProduits, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline, contrats: vContrats, catalogue: vCatalogue };
 
 function nav() {
   const counts = {
@@ -1313,6 +1583,12 @@ $('#view').innerHTML = `<div class="kpis">${'<div class="kpi"><div class="skel" 
   await CHARGEURS.dashboard();
   await chargerFiches();
   await aller(location.hash.slice(1) || 'dashboard');
+  // ?produit=P0001 : ouvre la vue Produits avec la modale du produit (demo, captures)
+  const autoProd = params.get('produit');
+  if (autoProd) {
+    if (S.page !== 'produits') { S.page = 'produits'; render(); await CHARGEURS.produits(); render(); }
+    await ouvrirProduit(autoProd);
+  }
   // ?q=... : pose automatiquement une question a l'assistant (demo, captures)
   const autoQ = params.get('q');
   if (autoQ && S.page === 'assistant') await poserQuestion(autoQ);

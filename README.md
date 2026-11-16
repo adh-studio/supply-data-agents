@@ -182,7 +182,13 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   n'ecrit que dans `outbox/`, `a_valider/`, `validees/`, `rejetees/` et
   `docs/rapport-hebdo.html` (plus `rapport.md` et `journal_qa.jsonl`, sorties
   historiques des modules). La base n'est jamais ecrite.
-- **Vues** : Dashboard (KPI + graphiques SVG faits main), Rapport hebdo,
+- **Vues** : Dashboard (KPI + graphiques SVG faits main), Produits (le
+  grand tableau de consultation du catalogue : une ligne par produit avec
+  ventes, CA en MGA, taux de marge, stock total, couverture minimale, pire
+  statut de stock et statut de fiche ; filtres cumulables par famille, statut
+  de stock, segment et fiche ; tri par clic sur chaque en-tete, CA decroissant
+  par defaut ; clic sur une ligne pour la modale de detail avec le stock par
+  entrepot, la fiche produit rendue et un bouton vers l'Assistant), Rapport hebdo,
   Pipeline (dernier build dbt, historique des 20 derniers, bouton Rafraichir
   l'entrepot, diagnostics du gardien en cas d'echec), Contrats (verdict des
   4 contrats ODCS regle par regle, SLA de fraicheur avec l'age reel, bouton
@@ -195,7 +201,8 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   gardien sur ses deux scenarios de demonstration).
 - **Options d'URL** : `?theme=dark|light` force le theme au chargement,
   `?motion=0` coupe les animations (captures), `?q=...` pose une question
-  a l'assistant, `?notifs=1` ouvre le panneau de notifications.
+  a l'assistant, `?notifs=1` ouvre le panneau de notifications,
+  `?produit=P0001` ouvre la vue Produits avec la modale du produit.
 
 ## La boucle fermee : SupplyOps, pipeline et build nocturne
 

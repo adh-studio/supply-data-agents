@@ -28,6 +28,7 @@ API REST JSON :
   GET  /api/notifications             publications SupplyOps + saisies en attente
   GET  /api/contrats                  verdict des contrats de donnees ODCS
   POST /api/contrats/verifier         revalide les contrats (sans build)
+  GET  /api/catalogue                 catalogue des data products (etat vivant)
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from alerte_rupture import moteur as moteur_alerte
 from agent_qa import moteur as moteur_qa
+from catalogue import moteur as moteur_catalogue
 from fiches_produits import moteur as moteur_fiches
 from gardien_qualite import moteur as moteur_gardien
 from lib import base
@@ -581,6 +583,10 @@ class Cockpit(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **calculer_notifications()})
             if chemin == "/api/contrats":
                 return self._json(200, {"ok": True, **verifier_contrats()})
+            if chemin == "/api/catalogue":
+                return self._json(
+                    200, {"ok": True, **moteur_catalogue.evaluer_tout()}
+                )
             if chemin == "/rapport-hebdo.html":
                 chemin_html = os.path.join(racine(), "docs", "rapport-hebdo.html")
                 if os.path.exists(chemin_html):

@@ -59,7 +59,7 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
 ```
 
 Le script cree `.venv`, installe `requirements.txt`, construit la base fixture et
-lance les 253 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
+lance les 271 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
 
 ## Les 5 modules, un exemple chacun
 
@@ -164,7 +164,9 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   Pipeline (dernier build dbt, historique des 20 derniers, bouton Rafraichir
   l'entrepot, diagnostics du gardien en cas d'echec), Contrats (verdict des
   4 contrats ODCS regle par regle, SLA de fraicheur avec l'age reel, bouton
-  Reverifier), Assistant (chat Q&A avec
+  Reverifier), Catalogue (marketplace des data products : cartes par domaine,
+  SLO avec la fraicheur reelle, consommateurs, maturite, bouton Explorer vers
+  l'Assistant), Assistant (chat Q&A avec
   SQL affiche en toute transparence), Alertes rupture (reappro suggere + depot
   outbox), Fiches produits (colonnes En attente / Validees / Rejetees,
   approbation et rejet motives a la main), Sante des donnees (diagnostics du
@@ -239,6 +241,45 @@ owner, pill conforme ou viole, SLA avec l'age reel, chaque regle avec son
 detail, historique des amendements depliable quand le contrat a un
 changelog) et un bouton Reverifier (`POST /api/contrats/verifier`) qui
 revalide sans lancer de build.
+
+### Catalogue : la marketplace des data products
+
+```bash
+python -m catalogue               # verdict data product par data product, code 0/1
+```
+
+Les 5 marts sont declares comme **data products** cote producteur, dans le
+repo dbt (`catalogue/<domaine>/*.yaml`, un YAML par produit de donnees,
+valide par `catalogue/schema/data_product.schema.json`). Deux domaines,
+quatre data products : couverture_stock et performance_fournisseurs
+(domaine supply), rentabilite_familles et palmares_produits (domaine
+offre). Chaque declaration porte la description metier, l'owner et son
+role, les ports de sortie (mart, grain, colonnes cles et leur sens), le
+contrat ODCS qui gouverne ses sources, les SLO (fraicheur 26 h : build
+nocturne de 2 h 30 plus marge, completude, disponibilite), les
+consommateurs declares, une question exemple et un changelog versionne.
+
+Le module `catalogue/` rend ces declarations **vivantes** :
+`catalogue/moteur.py` les charge depuis `DBT_DIR`, les valide contre le
+JSON Schema, verifie les references croisees (le mart existe vraiment
+dans l'entrepot DuckDB, lu en lecture seule via `lib.base` ; le contrat
+reference existe dans `contracts/` ; les consommateurs sont des vues,
+modules ou exports connus) et calcule l'etat vivant de chaque data
+product : fraicheur reelle (age du dernier build en succes dans
+`etat_build.json`, compare au SLO), nombre de lignes de chaque mart,
+statut du contrat lie (via le moteur des contrats) et score de maturite
+(documentation, contrat, SLO, owner presents : x / 4). Un data product
+est `sain`, `degrade` (SLO depasse ou contrat viole) ou `invalide`
+(declaration hors schema, reference cassee : code de sortie 1).
+
+La vue **Catalogue** de SupplySense (`GET /api/catalogue`) est la vitrine
+self-service : bandeau "2 domaines · 4 data products · tous sains", cartes
+riches groupees par domaine (description, owner, version, pills SLO avec
+la fraicheur reelle contre la promesse, lien vers la vue Contrats,
+consommateurs en chips, volumes, maturite en mini-jauge) et un bouton
+**Explorer** qui ouvre l'Assistant avec une question pre-remplie sur le
+data product. Un metier comprend en dix secondes ce qu'il peut consommer
+et a qui parler.
 
 ### Gouvernance : l'amendement de contrat en self-service
 
@@ -333,7 +374,7 @@ Ce repo est volontairement petit, mais chaque module incarne un reflexe produit 
   repli deterministe. L'automatisation ne depend pas de la disponibilite d'un LLM.
 - **Observable et auditable** : journal d'audit du self-service, outbox archivee des
   alertes, surveillance anti-echec dans le workflow n8n, code de sortie exploitable.
-- **Testable et livrable** : 253 tests sur base fixture et copies temporaires de
+- **Testable et livrable** : 271 tests sur base fixture et copies temporaires de
   seeds (jamais de vrai `dbt build` ni de reseau dans pytest), CI sans secret,
   un script unique (`run_e2e.sh`) identique en local et en CI.
 
@@ -379,11 +420,12 @@ gardien_qualite/     module 4 : diagnostic des tests dbt en echec
 fiches_produits/     module 5 : fiches produits assistees + validation humaine
 pipeline/            build dbt orchestre : verrou, contrats, etat_build.json
 contrats/            contrats de donnees ODCS : validation bloquante des seeds
+catalogue/           catalogue vivant des data products declares cote producteur
 supplyops/           SupplyOps : plateforme de saisie (seule a ecrire les seeds)
 cockpit/             SupplySense : cockpit web local (stdlib, lecture seule)
 n8n/                 workflow n8n importable (alerte rupture)
 docs/                vitrine GitHub Pages + exemple de rapport + plist nocturne
-tests/               253 tests pytest : base fixture + copies temporaires de seeds
+tests/               271 tests pytest : base fixture + copies temporaires de seeds
 run_e2e.sh           pipeline local = pipeline CI
 ```
 

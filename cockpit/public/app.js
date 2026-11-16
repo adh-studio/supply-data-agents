@@ -30,12 +30,14 @@ const ICONS = {
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>',
   pipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
   contrat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 16c.8-1.3 1.6-2 2.4-2 1.2 0 .9 2 2 2 .8 0 1.2-.6 2-.6"/><path d="M9 11h6"/></svg>',
+  boussole: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15.8 8.2-2.2 5.4-5.4 2.2 2.2-5.4z"/></svg>',
 };
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
   chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false,
   pipeline: null, pipeSel: null,
   contrats: null, contratOuverts: {}, contratsEnCours: false,
+  catalogue: null, preQuestion: null,
   notifs: [], nbEnAttente: 0, notifsPretes: false, bandeauFerme: false };
 
 const SUGGESTIONS = [
@@ -225,6 +227,14 @@ function vAssistant() {
   const form = el('form', 'chatform', `<input id="qaInput" placeholder="Exemple : quelle famille a la pire rotation ?" autocomplete="off">
     <button class="btn primary" type="submit" ${S.enCours ? 'disabled' : ''}>${S.enCours ? 'En cours' : 'Demander'}</button>`);
   form.onsubmit = e => { e.preventDefault(); const q = form.querySelector('#qaInput').value.trim(); if (q) poserQuestion(q); };
+  // question pre-remplie par le bouton Explorer du catalogue : elle reste
+  // en etat (S.preQuestion) pour survivre aux re-renders jusqu'a l'envoi
+  if (S.preQuestion) {
+    const champ = form.querySelector('#qaInput');
+    champ.value = S.preQuestion;
+    champ.addEventListener('input', () => { S.preQuestion = champ.value; });
+    queueMicrotask(() => champ.focus());
+  }
   b1.appendChild(form);
   left.appendChild(c1);
   v.appendChild(left);
@@ -250,6 +260,7 @@ function vAssistant() {
 async function poserQuestion(question) {
   if (S.enCours) return;
   S.enCours = true;
+  S.preQuestion = null;
   S.chat.push({ role: 'q', texte: question });
   render();
   const r = await api('/qa', { method: 'POST', body: { question } });
@@ -765,6 +776,126 @@ function vContrats() {
   return v;
 }
 
+// ---------------- catalogue de data products ----------------
+async function chargerCatalogue() {
+  try { const r = await api('/catalogue'); if (r.ok) S.catalogue = r; } catch (e) { /* API injoignable */ }
+}
+
+const LIB_DOMAINE = {
+  supply: ['Domaine supply', 'Stocks, ruptures et fiabilite des fournisseurs d\'import'],
+  offre: ['Domaine offre', 'Rentabilite et classement commercial du catalogue'],
+};
+const LIB_TYPE_CONS = { vue: 'vue', module: 'agent', export: 'export' };
+const LIB_STATUT_DP = {
+  sain: ['sain', 'ok'], degrade: ['degrade', 'warn'], invalide: ['invalide', 'bad'],
+};
+
+function dpCard(dp) {
+  const [libStatut, classeStatut] = LIB_STATUT_DP[dp.statut] || [dp.statut, 'neutre'];
+  const owner = dp.owner || {};
+  const f = dp.fraicheur || {};
+  const fok = f.statut === 'a_jour';
+  const slo = dp.slo || {};
+  const m = dp.maturite || { score: 0, sur: 4 };
+  const contratOk = (dp.contrat || {}).statut === 'conforme';
+  const carte = el('div', 'card dpcard' + (dp.statut === 'sain' ? '' : ' ko'));
+  carte.appendChild(el('div', 'chead', `
+    <div><h2>${esc(dp.nom)}</h2>
+      <div class="cap">v${esc(dp.version)} · owner ${esc(owner.nom || '?')} <span class="dprole">(${esc(owner.role || '')})</span></div></div>
+    <span class="chip ${classeStatut}" style="margin-left:auto"><span class="dot2" style="background:var(--${classeStatut === 'ok' ? 'ok' : classeStatut === 'warn' ? 'warn' : 'bad'})"></span>${esc(libStatut)}</span>`));
+  const corps = el('div', 'cbody');
+  corps.appendChild(el('p', 'dpdesc', esc(dp.description)));
+
+  // SLO : fraicheur reelle contre promesse, completude, disponibilite
+  corps.appendChild(el('div', 'dpslo', `
+    <span class="chip ${fok ? 'ok' : 'warn'}" title="${esc(f.detail || '')}">${ICONS.clock}
+      ${fok ? 'a jour' : f.statut === 'depassee' ? 'en retard' : 'fraicheur inconnue'}${f.age_heures !== null && f.age_heures !== undefined ? ` · ${nfr(f.age_heures, 1)} h / ${nfr(f.limite_heures, 0)} h` : ''}</span>
+    <span class="pill" title="Part minimale promise des entites du perimetre">completude ≥ ${nfr(slo.completude_pct, 0)} %</span>
+    <span class="pill" title="Fenetre de disponibilite promise">${esc(slo.disponibilite || '')}</span>`));
+
+  // ports de sortie : table, grain, volume
+  const ports = el('div', 'dpports');
+  for (const p of dp.ports_de_sortie || []) {
+    ports.appendChild(el('div', 'dpport', `
+      <span class="dpporttable">${ICONS.box}<b>${esc(p.table)}</b></span>
+      <span class="sub2">${esc(p.grain)}</span>
+      <span class="pill terra" style="margin-left:auto">${p.nb_lignes === null ? 'volume inconnu' : nfr(p.nb_lignes) + ' lignes'}</span>`));
+  }
+  corps.appendChild(ports);
+
+  // contrat qui gouverne les sources -> vue Contrats
+  corps.appendChild(el('a', 'dpcontrat' + (contratOk ? '' : ' ko'), `
+    ${ICONS.contrat}<span><b>Contrat ${esc((dp.contrat || {}).nom || (dp.contrat || {}).reference || 'absent')}</b>
+    <span class="sub2">${esc((dp.contrat || {}).reference || '')} · ${esc((dp.contrat || {}).statut || 'introuvable')}</span></span>
+    <span class="dpchev">→</span>`)).href = '#contrats';
+
+  // consommateurs declares
+  corps.appendChild(el('div', 'dpcons',
+    (dp.consommateurs || []).map(c => `<span class="pill dpconsom ${esc(c.type)}" title="${esc(c.usage || '')}">${esc(LIB_TYPE_CONS[c.type] || c.type)} · ${esc(c.id)}</span>`).join('')));
+
+  if ((dp.problemes || []).length) {
+    corps.appendChild(el('ul', 'dpproblemes', dp.problemes.map(p => `<li>${esc(p)}</li>`).join('')));
+  }
+
+  // pied : score de maturite en mini-jauge + bouton Explorer vers l'Assistant
+  const pied = el('div', 'dppied', `
+    <span class="dpjauge" title="Documentation, contrat, SLO et owner presents">
+      <span class="sub2">maturite</span>
+      <span class="minibar"><span style="width:${Math.max(4, m.score / (m.sur || 4) * 100)}%"></span></span>
+      <b>${m.score} / ${m.sur}</b></span>
+    <button class="btn sm primary dpexplore">${ICONS.chat} Explorer</button>`);
+  pied.querySelector('.dpexplore').onclick = () => {
+    S.preQuestion = dp.question_exemple || `Que contient le data product ${dp.nom} ?`;
+    location.hash = '#assistant';
+  };
+  corps.appendChild(pied);
+  carte.appendChild(corps);
+  return carte;
+}
+
+function vCatalogue() {
+  const v = el('div');
+  const d = S.catalogue;
+  if (!d) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
+
+  // bandeau marketplace : compteurs + verdict global
+  const bande = el('div', 'card cbande', `
+    <div class="cbandeleft">
+      <span class="ico terra cbico">${ICONS.boussole}</span>
+      <div>
+        <b>${d.nb_domaines} domaines · ${d.nb_data_products} data products${d.tous_sains ? ' · tous sains' : ''}</b>
+        <div class="sub2">Marketplace self-service declare cote producteur dans supply-dbt-warehouse/catalogue ·
+          derniere verification ${tempsRelatif(d.verifie_le)}</div>
+      </div>
+    </div>
+    ${d.tous_sains
+      ? `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${d.nb_sains} / ${d.nb_data_products} sains</span>`
+      : d.nb_invalides
+        ? `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>${nfr(d.nb_invalides)} invalide(s)</span>`
+        : `<span class="chip warn"><span class="dot2" style="background:var(--warn)"></span>${d.nb_sains} / ${d.nb_data_products} sains</span>`}`);
+  v.appendChild(bande);
+
+  const filtre = dp => !S.q || (dp.nom + ' ' + dp.description + ' ' + (dp.ports_de_sortie || []).map(p => p.table).join(' ')).toLowerCase().includes(S.q);
+  // ordre metier : supply (chaine d'appro) d'abord, offre ensuite
+  const ordre = ['supply', 'offre'];
+  const domaines = [...(d.domaines || [])].sort((a, b) =>
+    (ordre.indexOf(a) + 1 || 99) - (ordre.indexOf(b) + 1 || 99));
+  for (const domaine of domaines) {
+    const liste = (d.data_products || []).filter(dp => dp.domaine === domaine && filtre(dp));
+    if (!liste.length) continue;
+    const [libelle, sousTitre] = LIB_DOMAINE[domaine] || [domaine, ''];
+    v.appendChild(el('div', 'dpdomaine', `<h3>${esc(libelle)}</h3><span class="sub2">${esc(sousTitre)}</span>
+      <span class="pill" style="margin-left:auto">${liste.length} data product${liste.length > 1 ? 's' : ''}</span>`));
+    const grille = el('div', 'dpgrid');
+    for (const dp of liste) grille.appendChild(dpCard(dp));
+    v.appendChild(grille);
+  }
+  if (S.q && !(d.data_products || []).some(filtre)) {
+    v.appendChild(el('div', 'empty', '<span class="big">🔎</span>Aucun data product ne correspond au filtre'));
+  }
+  return v;
+}
+
 // ---------------- notifications ----------------
 // Cloche de la topbar : publications SupplyOps (modifications + impact KPI)
 // et saisies en attente de publication. Non-lus = horodatage > dernier vu
@@ -909,6 +1040,7 @@ const CHARGEURS = {
   rapport: chargerRapport,
   pipeline: chargerPipeline,
   contrats: chargerContrats,
+  catalogue: chargerCatalogue,
 };
 
 // ---------------- router / shell ----------------
@@ -917,6 +1049,7 @@ const PAGES = [
   ['rapport', 'Rapport hebdo', ICONS.rapport, 1],
   ['pipeline', 'Pipeline', ICONS.pipe, 1],
   ['contrats', 'Contrats', ICONS.contrat, 1],
+  ['catalogue', 'Catalogue', ICONS.boussole, 1],
   ['assistant', 'Assistant', ICONS.chat, 2],
   ['alertes', 'Alertes rupture', ICONS.alerte, 2],
   ['fiches', 'Fiches produits', ICONS.fiche, 2],
@@ -931,8 +1064,9 @@ const SUBS = {
   rapport: () => 'Les 5 KPI du lundi matin',
   pipeline: () => 'Build dbt, 151 controles, entrepot a jour',
   contrats: () => 'Contrats de donnees ODCS, verdict regle par regle',
+  catalogue: () => 'Marketplace des data products : quoi consommer, a qui parler',
 };
-const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline, contrats: vContrats };
+const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline, contrats: vContrats, catalogue: vCatalogue };
 
 function nav() {
   const counts = {

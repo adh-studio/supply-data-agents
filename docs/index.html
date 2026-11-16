@@ -227,7 +227,7 @@
       Chaque module ci-dessous part d'un probleme metier concret, se declenche tout seul
       (planification ou evenement), s'appuie uniquement sur les marts valides par les tests dbt,
       et produit une sortie directement utilisable : un message Slack, une reponse chiffree,
-      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (253 tests) et
+      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (271 tests) et
       fonctionne sans cle d'API grace a des modes de repli deterministes.
     </div>
 
@@ -482,11 +482,64 @@
       <a class="lien-module" href="https://github.com/adh-studio/supply-dbt-warehouse/tree/main/contracts">Voir les contrats ODCS</a>
     </section>
 
+    <!-- Module 8 : catalogue de data products -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-ambre">&#129517;</div>
+        <h2>Catalogue de data products vivant</h2>
+        <span class="badge b-ambre">Marketplace self-service</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> des marts testes et contractualises ne servent a rien
+        si le metier ne sait pas qu'ils existent, ce qu'ils contiennent ni a qui parler.
+        Un catalogue fige dans un tableur ment au bout d'une semaine : il faut un
+        catalogue qui se verifie tout seul contre l'entrepot reel.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">La declaration, cote producteur</div>
+          Les 5 marts deviennent 4 data products declares dans le repo dbt
+          (catalogue/, un YAML par produit, valide par JSON Schema), ranges par
+          domaine : couverture de stock et performance fournisseurs (supply),
+          rentabilite des familles et palmares des produits (offre). Chaque
+          declaration porte description metier, owner et role, ports de sortie
+          (mart, grain, sens des colonnes), contrat ODCS de reference, SLO
+          (fraicheur 26 h, completude, disponibilite), consommateurs et changelog.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">L'etat vivant, cote moteur</div>
+          Le module catalogue valide chaque YAML contre le schema, verifie les
+          references croisees (le mart existe dans DuckDB, le contrat existe dans
+          contracts/, les consommateurs sont connus) et mesure l'etat reel :
+          fraicheur du dernier build en succes comparee au SLO, volumes, statut du
+          contrat lie, score de maturite sur 4. Verdict sain, degrade ou invalide,
+          CLI avec code de sortie pour la CI.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">La vitrine, cote metier</div>
+          La vue Catalogue de SupplySense groupe les data products par domaine :
+          cartes avec SLO et fraicheur reelle ("a jour &middot; 8 h / 26 h"), lien vers le
+          contrat, consommateurs en chips, maturite en jauge, et un bouton Explorer
+          qui ouvre l'Assistant avec une question pre-remplie. Dix secondes pour
+          comprendre quoi consommer et a qui parler.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Declaration YAML cote dbt</span><span class="f">&rarr;</span>
+        <span class="etape">Validation JSON Schema</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">References croisees + etat vivant</span><span class="f">&rarr;</span>
+        <span class="etape">Vue Catalogue SupplySense</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Explorer : question dans l'Assistant</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/catalogue">Voir le module catalogue</a>
+      <a class="lien-secondaire" href="https://github.com/adh-studio/supply-dbt-warehouse/tree/main/catalogue">Declarations cote producteur</a>
+    </section>
+
     <div class="intro">
       <strong>Ce que ce repo demontre cote produit :</strong> partir du probleme metier et non
       de la technologie, choisir le bon declencheur, mettre des garde-fous avant l'IA
       (lecture seule, allowlist SQL, validation humaine), prevoir un mode degrade sans LLM,
-      et rendre chaque automatisation testable et observable. 253 tests automatises tournent
+      et rendre chaque automatisation testable et observable. 271 tests automatises tournent
       a chaque modification, sans secret ni reseau.
     </div>
 

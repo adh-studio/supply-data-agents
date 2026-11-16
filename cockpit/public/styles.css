@@ -282,6 +282,20 @@ tbody tr:last-child td{border-bottom:none}
   border-radius:8px;background:var(--bg2);color:var(--ink)}
 .fempty{color:var(--mut2);font-size:11px;text-align:center;padding:18px 4px;border:1.5px dashed var(--line2);border-radius:9px}
 
+/* ============ fiches : couverture du catalogue ============ */
+.couvbande{margin-bottom:14px}
+.couvbande .cbandeleft{min-width:300px}
+.couvjauge{display:flex;align-items:center;gap:10px;margin-top:6px;max-width:360px}
+.couvjauge .minibar{flex:1;height:7px}
+.couvjauge .sub2{flex:0 0 auto;font-weight:700}
+.genprog{display:flex;align-items:center;gap:13px;padding:13px 17px;margin-bottom:14px}
+.genprog b{font-size:12.8px;letter-spacing:-.1px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.genprog .minibar{height:7px;max-width:none}
+.couvcard .couvwrap{max-height:460px;overflow-y:auto}
+.couvcard thead th{top:0}
+.notifitem.fiches{border-left:3px solid var(--ok)}
+.notifitem.fiches .ntitle svg{width:13px;height:13px;vertical-align:-2px;margin-right:4px;color:var(--t600)}
+
 /* ============ sante : diagnostics ============ */
 .diag{border:1px solid var(--line);border-radius:var(--r-md);padding:13px 15px;background:var(--card);
   box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:7px}

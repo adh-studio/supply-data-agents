@@ -34,6 +34,7 @@ const ICONS = {
 };
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
+  couverture: null, fichesProg: null, genProduit: null,
   chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false,
   pipeline: null, pipeSel: null,
   contrats: null, contratOuverts: {}, contratsEnCours: false,
@@ -360,12 +361,137 @@ function ficheCard(f, zone) {
   return d;
 }
 
+// generation de masse : sondage toutes les 2 s tant qu'elle tourne,
+// toast de bilan a la fin (une seule fois par generation)
+let fichesTimer = null;
+let fichesBilanVu = null;
+function sonderGenerationFiches() {
+  if (fichesTimer) return;
+  fichesTimer = setInterval(async () => {
+    await chargerFichesProg();
+    const p = S.fichesProg;
+    if (p && !p.en_cours) {
+      clearInterval(fichesTimer); fichesTimer = null;
+      if (p.terminee && p.horodatage_fin && p.horodatage_fin !== fichesBilanVu) {
+        fichesBilanVu = p.horodatage_fin;
+        const b = p.bilan || {};
+        if (b.erreur) toast('⚠️ Generation interrompue : ' + esc(b.erreur));
+        else toast(`${ICONS.check} Generation terminee : ${b.generees ?? 0} fiche(s) a valider${b.echouees ? ', ' + b.echouees + ' echec(s)' : ''}`);
+        chargerNotifications();
+      }
+      await Promise.all([chargerFiches(), chargerCouverture()]);
+    }
+    if (S.page === 'fiches') render();
+  }, 2000);
+}
+
+const STATUT_FICHE = {
+  validee: ['validee', 'ok'], en_attente: ['en attente', 'warn'],
+  rejetee: ['rejetee', 'bad'], aucune: ['aucune', 'neutre'],
+};
+
+async function genererPourProduit(id) {
+  if (S.genProduit) return;
+  S.genProduit = id;
+  render();
+  const r = await api('/fiches/generer', { method: 'POST', body: { produit_id: id } });
+  if (r.ok) {
+    const res = (r.resultats || [])[0] || {};
+    toast(res.statut === 'en_attente'
+      ? `${ICONS.check} Fiche ${esc(id)} deposee en attente (${libMode(res.mode)})`
+      : '⚠️ Fiche ' + esc(id) + ' refusee par les garde-fous : ' + esc((res.motifs || []).join(' ; ')));
+  } else toast('⚠️ ' + esc(r.erreur || 'echec'));
+  S.genProduit = null;
+  await Promise.all([chargerFiches(), chargerCouverture()]);
+  render();
+}
+
+function bandeauCouverture() {
+  const cv = S.couverture;
+  const p = S.fichesProg;
+  const enCours = !!(p && p.en_cours);
+  const bande = el('div', 'card cbande couvbande');
+  if (!cv) { bande.appendChild(el('div', 'sub2', 'Couverture du catalogue : chargement en cours')); return bande; }
+  const pct = cv.nb_produits ? Math.round(cv.nb_couverts / cv.nb_produits * 100) : 0;
+  bande.innerHTML = `
+    <div class="cbandeleft">
+      <span class="ico terra cbico">${ICONS.fiche}</span>
+      <div style="flex:1;min-width:0">
+        <b>${cv.nb_couverts} / ${cv.nb_produits} produits ont une fiche</b>
+        <div class="couvjauge"><span class="minibar"><span style="width:${Math.max(2, pct)}%"></span></span>
+          <span class="sub2 mono">${pct} %</span></div>
+      </div>
+    </div>
+    <span class="pill terra">${cv.compteurs.validee} validee(s)</span>
+    <span class="pill">${cv.compteurs.en_attente} en attente</span>
+    <button class="btn primary" id="btnGenTous" ${enCours || !cv.nb_manquants ? 'disabled' : ''}>
+      ✨ ${enCours ? 'Generation en cours' : cv.nb_manquants ? `Generer les manquantes (${cv.nb_manquants})` : 'Catalogue couvert'}</button>`;
+  bande.querySelector('#btnGenTous').onclick = async function () {
+    this.disabled = true;
+    const r = await api('/fiches/generer', { method: 'POST', body: { tous: true } });
+    if (r.ok && r.demarre) {
+      toast(`${ICONS.check} Generation des fiches manquantes lancee`);
+      await chargerFichesProg();
+      sonderGenerationFiches();
+    } else toast('⚠️ ' + esc(r.erreur || 'echec du demarrage'));
+    render();
+  };
+  return bande;
+}
+
+function progressionFiches() {
+  const p = S.fichesProg;
+  if (!p || !p.en_cours) return null;
+  const pct = p.total ? Math.round(p.faites / p.total * 100) : 0;
+  return el('div', 'card genprog', `
+    <span class="dot2 blink" style="background:var(--warn)"></span>
+    <div style="flex:1;min-width:0">
+      <b>${p.faites} / ${p.total || '?'}${p.produit_courant ? ' · en cours : ' + esc(p.produit_courant) : ''}</b>
+      <div class="minibar" style="margin-top:6px"><span style="width:${Math.max(2, pct)}%"></span></div>
+    </div>
+    <span class="sub2 mono" style="flex:0 0 auto">${pct} %${p.echouees ? ' · ' + p.echouees + ' echec(s)' : ''}</span>`);
+}
+
+function tableCouverture() {
+  const cv = S.couverture;
+  const [c, b] = card('Couverture du catalogue', 'Chaque produit du referentiel et le statut de sa fiche (filtrable par la recherche)', { flush: true });
+  c.classList.add('couvcard');
+  if (!cv) { b.innerHTML = '<div class="empty" style="padding:18px">Chargement en cours</div>'; return c; }
+  const enCours = !!(S.fichesProg && S.fichesProg.en_cours);
+  const liste = cv.produits.filter(pr => !S.q || (pr.nom_produit + ' ' + pr.id_produit + ' ' + pr.famille).toLowerCase().includes(S.q));
+  if (!liste.length) { b.innerHTML = '<div class="empty" style="padding:18px"><span class="big">🔎</span>Aucun produit ne correspond au filtre</div>'; return c; }
+  const wrap = el('div', 'tablewrap couvwrap');
+  const t = el('table', '', '<thead><tr><th>Produit</th><th>Famille</th><th>Statut de la fiche</th><th style="text-align:right"></th></tr></thead>');
+  const tb = el('tbody');
+  for (const pr of liste) {
+    const [lib, cls] = STATUT_FICHE[pr.statut] || [pr.statut, 'neutre'];
+    const tr = el('tr', '', `
+      <td><span class="cellmain"><span class="initials">${esc((pr.nom_produit || '?').slice(0, 2).toUpperCase())}</span>
+        <span class="txt"><b>${esc(pr.nom_produit)}</b><span class="sub2">${esc(pr.id_produit)}</span></span></span></td>
+      <td>${esc(pr.famille || '')}</td>
+      <td><span class="chip ${cls}"><span class="dot2" style="background:var(--${cls === 'ok' ? 'ok' : cls === 'warn' ? 'warn' : cls === 'bad' ? 'bad' : 'mut2'})"></span>${lib}</span></td>
+      <td style="text-align:right">${pr.statut === 'aucune'
+        ? `<button class="btn sm" ${enCours || S.genProduit ? 'disabled' : ''}>${S.genProduit === pr.id_produit ? 'Generation...' : '✨ Generer'}</button>`
+        : ''}</td>`);
+    const btn = tr.querySelector('button');
+    if (btn) btn.onclick = () => genererPourProduit(pr.id_produit);
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  b.appendChild(wrap);
+  return c;
+}
+
 function vFiches() {
   const v = el('div');
   v.appendChild(el('div', 'notice', `<b>La publication reste un geste humain.</b> Les brouillons sont generes avec garde-fous
     (80 a 120 mots, 3 points forts, aucun prix ni superlatif invente) puis attendent ton Approuver ou Rejeter. Rien n'est publie sans ce clic.`));
+  v.appendChild(bandeauCouverture());
+  const prog = progressionFiches();
+  if (prog) v.appendChild(prog);
   const bar = el('div', 'filters');
-  const bGen = el('button', 'btn primary', '✨ Generer 2 fiches');
+  const bGen = el('button', 'btn', '✨ Generer 2 fiches (tops d\'abord)');
   bGen.onclick = async () => {
     bGen.disabled = true;
     const r = await api('/fiches/generer', { method: 'POST', body: { limite: 2 } });
@@ -374,7 +500,7 @@ function vFiches() {
       const rejetees = r.resultats.length - deposees;
       toast(`${ICONS.check} ${deposees} fiche(s) deposee(s) en attente${rejetees ? ', ' + rejetees + ' refusee(s) par les garde-fous' : ''}`);
     } else toast('⚠️ ' + esc(r.erreur || 'echec'));
-    await chargerFiches(); render();
+    await Promise.all([chargerFiches(), chargerCouverture()]); render();
   };
   bar.appendChild(bGen);
   v.appendChild(bar);
@@ -397,6 +523,9 @@ function vFiches() {
     cols.appendChild(kcol);
   }
   v.appendChild(cols);
+  const couv = tableCouverture();
+  couv.style.marginTop = '16px';
+  v.appendChild(couv);
   return v;
 }
 
@@ -940,6 +1069,19 @@ function notifItem(n) {
       <a class="btn sm nbtn" href="#contrats">Ouvrir la vue Contrats</a>
     </div>`;
   }
+  if (n.type === 'fiches') {
+    return `<div class="notifitem fiches${nonLu ? ' nonlu' : ''}">
+      <div class="nhead"><span class="ntitle">${ICONS.fiche} Fiches produits : generation terminee</span>
+        <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
+      <div class="nrow">${n.erreur
+        ? `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>generation interrompue</span>`
+        : `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${nfr(n.generees)} generee(s)</span>
+           ${n.echouees ? `<span class="chip bad" style="margin-left:6px"><span class="dot2" style="background:var(--bad)"></span>${nfr(n.echouees)} echec(s)</span>` : ''}`}</div>
+      <div class="ncontrat">${n.erreur ? esc(n.erreur)
+        : `Fiches produits : ${nfr(n.generees)} generee(s), ${nfr(n.echouees)} echec(s), a valider.`}</div>
+      <a class="btn sm nbtn" href="#fiches">Ouvrir la vue Fiches produits</a>
+    </div>`;
+  }
   const ok = n.statut === 'succes';
   const contrats = n.statut === 'echec_contrats';
   const titre = n.declencheur === 'supplysense' ? 'Rafraichissement SupplySense' : 'Publication SupplyOps';
@@ -1029,13 +1171,15 @@ async function chargerEtat() {
   }
 }
 async function chargerFiches() { const r = await api('/fiches'); if (r.ok) S.fiches = r; }
+async function chargerCouverture() { try { const r = await api('/fiches/couverture'); if (r.ok) S.couverture = r; } catch (e) { /* API injoignable */ } }
+async function chargerFichesProg() { try { const r = await api('/fiches/progression'); if (r.ok) S.fichesProg = r; } catch (e) { /* API injoignable */ } }
 async function chargerRapport() { const r = await api('/rapport'); if (r.ok) S.rapport = r; }
 
 const CHARGEURS = {
   dashboard: async () => { const r = await api('/kpis'); if (r.ok) S.kpis = r; },
   assistant: async () => { const j = await api('/qa/journal'); if (j.ok) S.journal = j.journal; },
   alertes: async () => { const r = await api('/ruptures'); if (r.ok) S.ruptures = r.ruptures; },
-  fiches: chargerFiches,
+  fiches: async () => { await Promise.all([chargerFiches(), chargerCouverture(), chargerFichesProg()]); if (S.fichesProg && S.fichesProg.en_cours) sonderGenerationFiches(); },
   sante: async () => { const r = await api('/sante'); if (r.ok) S.sante = r; },
   rapport: chargerRapport,
   pipeline: chargerPipeline,

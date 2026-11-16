@@ -138,8 +138,27 @@ TEST_MODE=1 python -m fiches_produits generer --limite 1
 
 Puis, apres relecture : `python -m fiches_produits approuver P018` deplace la fiche
 en `validees/`. Rien n'est publie sans ce geste humain.
-Le rejet motive existe aussi : `fiches_produits.moteur.rejeter(id, motif)` deplace
-la fiche en `rejetees/` avec le motif dans l'en-tete YAML.
+Le rejet motive existe aussi : `python -m fiches_produits rejeter P018 --motif "..."`
+deplace la fiche en `rejetees/` avec le motif dans l'en-tete YAML.
+
+La generation couvre tout le referentiel (le mart `offre_top_flop_produits`
+liste TOUS les produits, y compris sans vente) :
+
+```bash
+python -m fiches_produits couverture                 # tableau : statut de fiche de chaque produit
+python -m fiches_produits generer --produit P0043    # un produit precis (--remplacer archive
+                                                     # une fiche en attente ou validee existante)
+python -m fiches_produits generer --tous             # toutes les manquantes, sequentiellement
+                                                     # (--inclure-rejetees pour regenerer les rejets)
+python -m fiches_produits generer --limite 3         # comportement historique, les tops d'abord
+```
+
+La couverture retient le statut le plus avance par produit (validee puis
+en attente puis rejetee puis aucune). `--tous` continue malgre les echecs
+individuels et affiche un bilan : generees, echecs, produits deja couverts.
+Cote cockpit, la vue Fiches produits montre la jauge de couverture, lance la
+generation de masse en arriere-plan (progression sondable, 409 si une
+generation tourne deja) et propose un bouton Generer par produit sans fiche.
 
 ## SupplySense : le cockpit web
 

@@ -361,6 +361,49 @@ tbody tr:last-child td{border-bottom:none}
 [data-theme="dark"] .bandeau a{color:#fcd34d}
 [data-theme="dark"] .bandeau .bclose:hover{background:rgba(245,158,11,.15)}
 
+/* ============ contrats de donnees ============ */
+.cbande{display:flex;align-items:center;gap:14px;padding:15px 18px;margin-bottom:16px;flex-wrap:wrap}
+.cbande .cbandeleft{display:flex;align-items:center;gap:12px;flex:1;min-width:240px}
+.cbande b{font-size:14.5px;letter-spacing:-.2px;font-weight:750;display:block}
+.cbande .cbico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--t100);color:var(--t700)}
+.cbande .cbico svg{width:19px;height:19px}
+[data-theme="dark"] .cbande .cbico{background:rgba(217,101,49,.16);color:var(--t300)}
+.cgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+@media (max-width:1100px){.cgrid{grid-template-columns:1fr}}
+.contratcard.ko{border-left:3px solid var(--bad)}
+.csla{display:flex;align-items:center;gap:11px;padding:10px 13px;margin-bottom:11px;border-radius:11px;
+  background:var(--t50);border:1px solid var(--t200);font-size:12.3px}
+.csla>svg{width:16px;height:16px;flex:0 0 auto;color:var(--t700)}
+.csla b{font-size:12.3px;font-weight:720}
+[data-theme="dark"] .csla{background:rgba(217,101,49,.08);border-color:rgba(217,101,49,.25)}
+[data-theme="dark"] .csla>svg{color:var(--t300)}
+.csla.ko{background:#fee2e2;border-color:#fecaca}
+.csla.ko>svg{color:var(--bad)}
+[data-theme="dark"] .csla.ko{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3)}
+.creglelist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cregle{border-bottom:1px solid var(--line)}
+.cregle:last-child{border-bottom:none}
+.crhead{display:flex;align-items:center;gap:10px;width:100%;padding:8.5px 12px;border:none;cursor:pointer;
+  background:transparent;color:var(--ink);text-align:left;transition:background var(--speed)}
+.crhead:hover{background:var(--bg2)}
+.cregle.open .crhead{background:var(--bg2)}
+.cdot{width:9px;height:9px;border-radius:99px;flex:0 0 auto}
+.crname{font-weight:650;font-size:12.4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-.2px}
+.crobj{color:var(--mut2);font-size:11px;font-weight:650}
+.crchev{margin-left:auto;color:var(--mut2);font-size:11px}
+.crdetail{padding:3px 13px 11px 31px;font-size:12.1px;line-height:1.55;color:var(--ink2)}
+.crdetail p{margin:4px 0 0}
+.crdetail .crviol{color:#991b1b;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px}
+[data-theme="dark"] .crdetail .crviol{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#fca5a5}
+.crdetail .crok{color:var(--mut)}
+.cregle.ko .crname{color:#991b1b}
+[data-theme="dark"] .cregle.ko .crname{color:#fca5a5}
+.nimpact.ko{background:#fee2e2;border-color:#fecaca;color:#7f1d1d}
+.nimpact.ko b{color:#991b1b}
+[data-theme="dark"] .nimpact.ko{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#fecaca}
+[data-theme="dark"] .nimpact.ko b{color:#fca5a5}
+
 /* ============ divers ============ */
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .empty{color:var(--mut2);text-align:center;padding:36px 12px;font-size:12.8px}

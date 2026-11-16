@@ -426,7 +426,7 @@ function vPublication() {
   if (enCours) {
     verdict = `<div class="buildbar"><span class="anim"></span></div>
       <div class="sub2">Build en cours (declencheur ${esc(build.declencheur || 'supplyops')})... la page se met a jour toute seule.</div>`;
-  } else if (S.pubApresLancement || build.statut === 'succes' || build.statut === 'echec') {
+  } else if (S.pubApresLancement || build.statut === 'succes' || build.statut === 'echec' || build.statut === 'echec_contrats') {
     if (build.statut === 'succes') {
       verdict = `<div class="verdict ok"><span class="vico">${ICONS.check}</span><div style="flex:1">
         <b>Build vert : ${nfr(build.pass)} / ${nfr(build.total)} modeles et controles passes</b>
@@ -436,6 +436,13 @@ function vPublication() {
       verdict = `<div class="verdict bad"><span class="vico">${ICONS.croix}</span><div style="flex:1">
         <b>Build en echec : ${nfr(build.fail)} controle(s) sur ${nfr(build.total)} ont casse</b>
         <div class="sub2">Le gardien de qualite a depose un diagnostic dans outbox/ · les saisies restent en attente</div></div></div>`;
+    } else if (build.statut === 'echec_contrats') {
+      const regles = (build.contrats || {}).regles_violees || [];
+      verdict = `<div class="verdict bad"><span class="vico">${ICONS.croix}</span><div style="flex:1">
+        <b>Publication refusee par les contrats de donnees : le build n'a pas ete lance</b>
+        <div class="sub2">${nfr((build.contrats || {}).nb_violations || 0)} regle(s) violee(s) sur
+          ${nfr((build.contrats || {}).nb_regles || 0)} · corriger les saisies puis republier</div>
+        ${regles.length ? `<ul class="sub2" style="margin:7px 0 0;padding-left:17px;line-height:1.55">${regles.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</div></div>`;
     }
   }
   b1.innerHTML = `
@@ -497,7 +504,9 @@ function demarrerSondage() {
       const b = e.build || {};
       toast(b.statut === 'succes'
         ? `${ICONS.check} Build vert : ${nfr(b.pass)}/${nfr(b.total)} controles passes, SupplySense est a jour`
-        : `⚠ Build en echec : ${nfr(b.fail)} controle(s) casse(s), diagnostic dans outbox/`);
+        : b.statut === 'echec_contrats'
+          ? `⚠ Publication refusee : ${nfr((b.contrats || {}).nb_violations || 0)} regle(s) de contrat violee(s), build non lance`
+          : `⚠ Build en echec : ${nfr(b.fail)} controle(s) casse(s), diagnostic dans outbox/`);
     }
     if (S.page === 'publication') render();
   }, 1500);

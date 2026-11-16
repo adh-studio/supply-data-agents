@@ -29,11 +29,13 @@ const ICONS = {
   coin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.6-1-1.7-1.5-3-1.5-1.8 0-3 1-3 2.3 0 3.3 6.2 1.3 6.2 4.4 0 1.3-1.4 2.3-3.2 2.3-1.5 0-2.6-.6-3.2-1.6M12 6.5v11"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>',
   pipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+  contrat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 16c.8-1.3 1.6-2 2.4-2 1.2 0 .9 2 2 2 .8 0 1.2-.6 2-.6"/><path d="M9 11h6"/></svg>',
 };
 
 const S = { etat: null, kpis: null, ruptures: null, fiches: null, sante: null, rapport: null,
   chat: [], journal: [], page: 'dashboard', q: '', scenario: 'casse', dernierOutbox: null, enCours: false,
   pipeline: null, pipeSel: null,
+  contrats: null, contratOuverts: {}, contratsEnCours: false,
   notifs: [], nbEnAttente: 0, notifsPretes: false, bandeauFerme: false };
 
 const SUGGESTIONS = [
@@ -505,7 +507,7 @@ function vRapport() {
 
 // ---------------- pipeline ----------------
 const LIB_DECL = { manuel: 'manuel', nocturne: 'build nocturne', supplyops: 'SupplyOps', supplysense: 'SupplySense' };
-const LIB_STATUT = { succes: 'succes', echec: 'echec', en_cours: 'en cours', jamais_construit: 'jamais construit' };
+const LIB_STATUT = { succes: 'succes', echec: 'echec', echec_contrats: 'refuse par les contrats', en_cours: 'en cours', jamais_construit: 'jamais construit' };
 
 function tempsRelatif(iso) {
   if (!iso) return 'jamais';
@@ -552,6 +554,7 @@ function vPipeline() {
   const pills = {
     succes: `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>Dernier build : succes</span>`,
     echec: `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>Dernier build : echec</span>`,
+    echec_contrats: `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>Dernier build : refuse par les contrats</span>`,
     en_cours: `<span class="chip warn"><span class="dot2 blink" style="background:var(--warn)"></span>Build en cours</span>`,
   };
   const pill = pills[e.statut] || '<span class="chip neutre">Jamais construit</span>';
@@ -644,6 +647,107 @@ function vPipeline() {
     }
     v.appendChild(c3);
   }
+
+  // encart contrats : publication refusee avant meme le build
+  if (e.statut === 'echec_contrats') {
+    const regles = (e.contrats || {}).regles_violees || [];
+    const [c4, b4] = card('Publication refusee par les contrats de donnees',
+      'Le dbt build n\'a pas ete lance : les seeds violent au moins une regle des contrats ODCS');
+    c4.style.marginTop = '16px';
+    c4.style.borderLeft = '3px solid var(--bad)';
+    b4.innerHTML = `
+      ${regles.length ? `<ul class="nliste" style="margin-top:0">${regles.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+      <a class="btn sm" href="#contrats" style="margin-top:4px">${ICONS.contrat} Ouvrir la vue Contrats</a>`;
+    v.appendChild(c4);
+  }
+  return v;
+}
+
+// ---------------- contrats de donnees ----------------
+async function chargerContrats() {
+  try { const r = await api('/contrats'); if (r.ok) S.contrats = r; } catch (e) { /* API injoignable */ }
+}
+
+function regleRow(c, i, r) {
+  const cle = c.id + ':' + i;
+  const ouvert = !!S.contratOuverts[cle];
+  const ok = r.statut === 'conforme';
+  const row = el('div', 'cregle' + (ok ? '' : ' ko') + (ouvert ? ' open' : ''), `
+    <button class="crhead" aria-expanded="${ouvert}">
+      <span class="cdot" style="background:${ok ? 'var(--ok)' : 'var(--bad)'}"></span>
+      <span class="crname">${esc(r.nom)}</span>
+      <span class="crobj">${esc(r.objet)}</span>
+      <span class="crchev">${ouvert ? '▾' : '▸'}</span>
+    </button>
+    ${ouvert ? `<div class="crdetail">
+      <p>${esc(r.description)}</p>
+      ${r.detail ? `<p class="crviol">${esc(r.detail)}</p>` : '<p class="crok">Aucune ligne en violation.</p>'}
+    </div>` : ''}`);
+  row.querySelector('.crhead').onclick = () => {
+    S.contratOuverts[cle] = !ouvert;
+    render();
+  };
+  return row;
+}
+
+function vContrats() {
+  const v = el('div');
+  const d = S.contrats;
+  if (!d) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
+
+  // bandeau d'entete : compteurs, verdict global, reverification a la demande
+  const bande = el('div', 'card cbande', `
+    <div class="cbandeleft">
+      <span class="ico terra cbico">${ICONS.contrat}</span>
+      <div>
+        <b>${d.nb_contrats} contrats · ${d.nb_regles} regles de qualite</b>
+        <div class="sub2">Contrats ODCS v3 (standard Bitol) publies dans supply-dbt-warehouse/contracts ·
+          derniere verification ${tempsRelatif(d.verifie_le)}</div>
+      </div>
+    </div>
+    ${d.conforme
+      ? `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>tous conformes</span>`
+      : `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>${nfr(d.nb_violations)} violation(s)</span>`}
+    <button class="btn primary" id="btnVerif" ${S.contratsEnCours ? 'disabled' : ''}>${ICONS.pipe} ${S.contratsEnCours ? 'Verification...' : 'Reverifier'}</button>`);
+  bande.querySelector('#btnVerif').onclick = async function () {
+    S.contratsEnCours = true; render();
+    try {
+      const r = await api('/contrats/verifier', { method: 'POST', body: {} });
+      if (r.ok) {
+        S.contrats = r;
+        toast(r.conforme ? `${ICONS.check} Contrats reverifies : ${nfr(r.nb_regles)} regles, tout est conforme`
+          : `⚠️ Contrats reverifies : ${nfr(r.nb_violations)} violation(s) detectee(s)`);
+      } else toast('⚠️ ' + esc(r.erreur || 'echec de la verification'));
+    } catch (e) { toast('⚠️ API injoignable'); }
+    S.contratsEnCours = false; render();
+  };
+  v.appendChild(bande);
+
+  const grille = el('div', 'cgrid');
+  for (const c of d.contrats || []) {
+    const ok = c.statut === 'conforme';
+    const carte = el('div', 'card contratcard' + (ok ? '' : ' ko'));
+    carte.appendChild(el('div', 'chead', `
+      <div><h2>${esc(c.nom)}</h2>
+        <div class="cap">v${esc(c.version)} · owner ${esc(c.owner)} · ${(c.seeds || []).map(esc).join(', ')}</div></div>
+      ${ok ? `<span class="chip ok" style="margin-left:auto"><span class="dot2" style="background:var(--ok)"></span>conforme</span>`
+        : `<span class="chip bad" style="margin-left:auto"><span class="dot2" style="background:var(--bad)"></span>viole</span>`}`));
+    const corps = el('div', 'cbody');
+    if (c.fraicheur) {
+      const fok = c.fraicheur.statut === 'conforme';
+      corps.appendChild(el('div', 'csla' + (fok ? '' : ' ko'), `
+        ${ICONS.clock}
+        <div><b>SLA de fraicheur : ${fok ? 'respecte' : 'depasse'}</b>
+          <div class="sub2">${esc(c.fraicheur.detail)} · element ${esc(c.fraicheur.element)}</div></div>
+        <span class="pill ${fok ? '' : 'terra'}" style="margin-left:auto">${c.fraicheur.age_jours === null ? 'sans date' : 'age reel ' + c.fraicheur.age_jours + ' j / ' + c.fraicheur.limite_jours + ' j'}</span>`));
+    }
+    const liste = el('div', 'creglelist');
+    (c.regles || []).forEach((r, i) => liste.appendChild(regleRow(c, i, r)));
+    corps.appendChild(liste);
+    carte.appendChild(corps);
+    grille.appendChild(carte);
+  }
+  v.appendChild(grille);
   return v;
 }
 
@@ -684,12 +788,16 @@ function notifItem(n) {
     </div>`;
   }
   const ok = n.statut === 'succes';
+  const contrats = n.statut === 'echec_contrats';
   const titre = n.declencheur === 'supplysense' ? 'Rafraichissement SupplySense' : 'Publication SupplyOps';
   return `<div class="notifitem${nonLu ? ' nonlu' : ''}">
     <div class="nhead"><span class="ntitle">${titre}</span><span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
     <div class="nrow">${ok
       ? `<span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${nfr(n.pass)} controles verts</span>`
-      : `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>build en echec · ${nfr(n.fail)} controle(s)</span>`}</div>
+      : contrats
+        ? `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>refusee par les contrats · build non lance</span>`
+        : `<span class="chip bad"><span class="dot2" style="background:var(--bad)"></span>build en echec · ${nfr(n.fail)} controle(s)</span>`}</div>
+    ${contrats && (n.regles_violees || []).length ? `<div class="nimpact ko"><b>Regles de contrat violees</b>${n.regles_violees.map(r => `<div>${esc(r)}</div>`).join('')}</div>` : ''}
     ${(n.modifications || []).length ? `<ul class="nliste">${n.modifications.map(m => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}
     ${(n.impact || []).length ? `<div class="nimpact"><b>Impact</b>${n.impact.map(p => `<div>${esc(p)}</div>`).join('')}</div>` : ''}
   </div>`;
@@ -721,6 +829,8 @@ async function chargerNotifications() {
       if (n.statut === 'succes') {
         const nb = (n.modifications || []).length;
         toastNotif(`${ICONS.check} Entrepot mis a jour : ${nb ? nb + ' modification' + (nb > 1 ? 's' : '') + ' publiee' + (nb > 1 ? 's' : '') + ', ' : ''}${nfr(n.pass)} controles verts`);
+      } else if (n.statut === 'echec_contrats') {
+        toastNotif(`⚠️ Publication refusee par les contrats : ${nfr((n.regles_violees || []).length)} regle(s) violee(s), build non lance`);
       } else {
         toastNotif(`⚠️ Publication en echec : ${nfr(n.fail)} controle(s) dbt au rouge`);
       }
@@ -776,6 +886,7 @@ const CHARGEURS = {
   sante: async () => { const r = await api('/sante'); if (r.ok) S.sante = r; },
   rapport: chargerRapport,
   pipeline: chargerPipeline,
+  contrats: chargerContrats,
 };
 
 // ---------------- router / shell ----------------
@@ -783,6 +894,7 @@ const PAGES = [
   ['dashboard', 'Dashboard', ICONS.dash, 1],
   ['rapport', 'Rapport hebdo', ICONS.rapport, 1],
   ['pipeline', 'Pipeline', ICONS.pipe, 1],
+  ['contrats', 'Contrats', ICONS.contrat, 1],
   ['assistant', 'Assistant', ICONS.chat, 2],
   ['alertes', 'Alertes rupture', ICONS.alerte, 2],
   ['fiches', 'Fiches produits', ICONS.fiche, 2],
@@ -796,8 +908,9 @@ const SUBS = {
   sante: () => 'Diagnostics du gardien sur les tests dbt',
   rapport: () => 'Les 5 KPI du lundi matin',
   pipeline: () => 'Build dbt, 151 controles, entrepot a jour',
+  contrats: () => 'Contrats de donnees ODCS, verdict regle par regle',
 };
-const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline };
+const VIEWS = { dashboard: vDashboard, assistant: vAssistant, alertes: vAlertes, fiches: vFiches, sante: vSante, rapport: vRapport, pipeline: vPipeline, contrats: vContrats };
 
 function nav() {
   const counts = {

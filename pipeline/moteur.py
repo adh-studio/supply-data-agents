@@ -3,6 +3,10 @@
 Responsabilites :
 - poser un verrou simple (fichier .pipeline.lock dans le repo dbt) pour
   refuser deux builds concurrents ;
+- valider les contrats de donnees ODCS (contrats.moteur) AVANT le dbt
+  build : la moindre regle violee refuse le build, pose le statut
+  echec_contrats dans etat_build.json avec le detail des regles en
+  cause, et depose un diagnostic lisible dans outbox/ ;
 - ecrire etat_build.json dans le repo dbt : statut en_cours pendant le
   build, puis succes ou echec avec les compteurs pass/fail/total, la
   duree et un historique borne aux 20 derniers builds ;
@@ -54,6 +58,7 @@ MAX_PHRASES_IMPACT = 5
 
 STATUT_SUCCES = "succes"
 STATUT_ECHEC = "echec"
+STATUT_ECHEC_CONTRATS = "echec_contrats"
 STATUT_EN_COURS = "en_cours"
 STATUT_JAMAIS_CONSTRUIT = "jamais_construit"
 
@@ -170,6 +175,86 @@ def _diagnostiquer_echec(chemin_run_results: str) -> str | None:
             f"Gardien de qualite indisponible pour le diagnostic : {erreur}",
             file=sys.stderr,
         )
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Contrats de donnees : validation bloquante avant chaque build
+# ---------------------------------------------------------------------------
+
+def verifier_contrats() -> dict:
+    """Valide les seeds contre les contrats ODCS du repo dbt.
+
+    Retourne le verdict de contrats.moteur.valider_tout. Un contrat
+    illisible est traite comme une violation (le build doit refuser de
+    partir sur un contrat corrompu plutot que de l'ignorer).
+    """
+    from contrats import moteur as moteur_contrats
+
+    try:
+        return moteur_contrats.valider_tout(dossier_dbt())
+    except Exception as erreur:
+        return {
+            "verifie_le": datetime.datetime.now().isoformat(timespec="seconds"),
+            "nb_contrats": 0,
+            "nb_regles": 0,
+            "nb_violations": 1,
+            "conforme": False,
+            "contrats": [],
+            "erreur": f"Contrats invalides : {erreur}",
+        }
+
+
+def _resumer_contrats(verdict: dict) -> dict:
+    """Bloc compact range dans etat_build.json : compteurs + regles violees."""
+    from contrats import moteur as moteur_contrats
+
+    phrases = moteur_contrats.regles_violees(verdict)
+    if verdict.get("erreur"):
+        phrases.append(verdict["erreur"])
+    return {
+        "nb_contrats": verdict.get("nb_contrats", 0),
+        "nb_regles": verdict.get("nb_regles", 0),
+        "nb_violations": verdict.get("nb_violations", 0),
+        "regles_violees": phrases,
+    }
+
+
+def _diagnostiquer_contrats(resume: dict) -> str | None:
+    """Depose dans outbox/ un diagnostic lisible du refus par les contrats."""
+    try:
+        dossier = dossier_outbox()
+        os.makedirs(dossier, exist_ok=True)
+        horodatage = datetime.datetime.now()
+        chemin = os.path.join(
+            dossier,
+            "diagnostic-contrats-" + horodatage.strftime("%Y%m%d-%H%M%S") + ".md",
+        )
+        lignes = [
+            "# Publication refusee : contrats de donnees violes",
+            "",
+            f"Genere le : {horodatage.isoformat(timespec='seconds')}",
+            "",
+            f"{resume['nb_violations']} violation(s) sur "
+            f"{resume['nb_regles']} regle(s) de {resume['nb_contrats']} "
+            "contrat(s) ODCS. Le dbt build n'a pas ete lance : les seeds "
+            "doivent etre corriges avant toute publication.",
+            "",
+            "## Regles violees",
+            "",
+        ]
+        lignes += [f"- {phrase}" for phrase in resume["regles_violees"]]
+        lignes += [
+            "",
+            "Verification a la demande : python -m contrats "
+            "(ou SupplySense, vue Contrats).",
+            "",
+        ]
+        with open(chemin, "w", encoding="utf-8") as fichier:
+            fichier.write("\n".join(lignes))
+        return chemin
+    except OSError as erreur:
+        print(f"Diagnostic contrats non depose : {erreur}", file=sys.stderr)
         return None
 
 
@@ -439,6 +524,44 @@ def executer_build(declencheur: str = "manuel") -> int:
             "historique": historique,
         }
         _ecrire_etat_atomique(etat_en_cours)
+
+        # Contrats de donnees : porte bloquante AVANT tout dbt build.
+        verdict_contrats = verifier_contrats()
+        if not verdict_contrats.get("conforme", True):
+            resume_contrats = _resumer_contrats(verdict_contrats)
+            etat_refus = {
+                "horodatage": datetime.datetime.now().isoformat(
+                    timespec="seconds"
+                ),
+                "statut": STATUT_ECHEC_CONTRATS,
+                "pass": 0,
+                "fail": resume_contrats["nb_violations"],
+                "total": resume_contrats["nb_regles"],
+                "duree_s": 0.0,
+                "declencheur": declencheur,
+                "contrats": resume_contrats,
+            }
+            entree_historique = dict(etat_refus)
+            entree_historique["modifications"] = []
+            historique.insert(0, entree_historique)
+            etat_refus["historique"] = historique[:TAILLE_HISTORIQUE]
+            _ecrire_etat_atomique(etat_refus)
+
+            print(
+                "Build refuse : "
+                f"{resume_contrats['nb_violations']} violation(s) des "
+                "contrats de donnees. Le dbt build n'a pas ete lance.",
+                file=sys.stderr,
+            )
+            for phrase in resume_contrats["regles_violees"]:
+                print(f"  - {phrase}", file=sys.stderr)
+            chemin_diagnostic = _diagnostiquer_contrats(resume_contrats)
+            if chemin_diagnostic:
+                print(
+                    f"Diagnostic contrats depose : {chemin_diagnostic}",
+                    file=sys.stderr,
+                )
+            return 1
 
         photographie_avant = photographier_kpis()
 

@@ -59,7 +59,7 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
 ```
 
 Le script cree `.venv`, installe `requirements.txt`, construit la base fixture et
-lance les 193 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
+lance les 237 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
 
 ## Les 5 modules, un exemple chacun
 
@@ -162,7 +162,9 @@ python -m cockpit                 # entrepot reel (DUCKDB_PATH)
   historiques des modules). La base n'est jamais ecrite.
 - **Vues** : Dashboard (KPI + graphiques SVG faits main), Rapport hebdo,
   Pipeline (dernier build dbt, historique des 20 derniers, bouton Rafraichir
-  l'entrepot, diagnostics du gardien en cas d'echec), Assistant (chat Q&A avec
+  l'entrepot, diagnostics du gardien en cas d'echec), Contrats (verdict des
+  4 contrats ODCS regle par regle, SLA de fraicheur avec l'age reel, bouton
+  Reverifier), Assistant (chat Q&A avec
   SQL affiche en toute transparence), Alertes rupture (reappro suggere + depot
   outbox), Fiches produits (colonnes En attente / Validees / Rejetees,
   approbation et rejet motives a la main), Sante des donnees (diagnostics du
@@ -208,6 +210,34 @@ concurrents), lance `.venv/bin/dbt build` du repo designe par `DBT_DIR`
 `etat_build.json` (statut, pass/fail/total, duree, declencheur, historique des
 20 derniers builds) de facon atomique. En cas d'echec, le gardien de qualite
 depose un diagnostic lisible dans `outbox/`. Code de sortie 0/1.
+
+### Contrats de donnees : la porte d'entree du build
+
+```bash
+python -m contrats                # verdict contrat par contrat, code 0/1
+```
+
+Les seeds ont des contrats de donnees **vivants** : 4 contrats ODCS v3
+(standard [Bitol](https://bitol.io), fichiers `contracts/*.odcs.yaml`)
+publies cote producteur dans supply-dbt-warehouse. Referentiel produits
+(unicite, familles du `schema.yml`, prix positifs, marge positive), stocks
+quotidiens (cle composite, quantites >= 0, references existantes, SLA de
+fraicheur : dernier inventaire de moins de 7 jours), ventes (canal, quantite
+et prix, date non future) et lots d'import (regles de dates, coherence du
+fret AIR/SEA avec le delai contractuel). Chaque contrat porte purpose,
+usage, semantique des colonnes, SLA, support et owner.
+
+Le module `contrats/` les fait vivre : `contrats/moteur.py` charge les
+contrats du repo dbt (`DBT_DIR`), valide chaque seed (schema, types, regles
+de qualite, integrite croisee, fraicheur) et rend un verdict par contrat.
+**Le pipeline execute cette validation AVANT chaque dbt build** : a la
+moindre regle violee, le build est refuse (statut `echec_contrats` dans
+`etat_build.json`, detail des regles en clair, diagnostic dans `outbox/`,
+code 1), et la cloche SupplySense annonce le refus avec les regles violees.
+La vue **Contrats** de SupplySense montre une carte par contrat (version,
+owner, pill conforme ou viole, SLA avec l'age reel, chaque regle avec son
+detail) et un bouton Reverifier (`POST /api/contrats/verifier`) qui
+revalide sans lancer de build.
 
 ### Notifications : ce qui a change et ce que ca a entraine
 
@@ -267,7 +297,7 @@ Ce repo est volontairement petit, mais chaque module incarne un reflexe produit 
   repli deterministe. L'automatisation ne depend pas de la disponibilite d'un LLM.
 - **Observable et auditable** : journal d'audit du self-service, outbox archivee des
   alertes, surveillance anti-echec dans le workflow n8n, code de sortie exploitable.
-- **Testable et livrable** : 193 tests sur base fixture et copies temporaires de
+- **Testable et livrable** : 237 tests sur base fixture et copies temporaires de
   seeds (jamais de vrai `dbt build` ni de reseau dans pytest), CI sans secret,
   un script unique (`run_e2e.sh`) identique en local et en CI.
 
@@ -311,12 +341,13 @@ agent_qa/            module 2 : self-service question -> SQL garde -> reponse
 rapport_hebdo/       module 3 : rapport hebdomadaire (markdown + HTML)
 gardien_qualite/     module 4 : diagnostic des tests dbt en echec
 fiches_produits/     module 5 : fiches produits assistees + validation humaine
-pipeline/            build dbt orchestre : verrou, etat_build.json, diagnostic
+pipeline/            build dbt orchestre : verrou, contrats, etat_build.json
+contrats/            contrats de donnees ODCS : validation bloquante des seeds
 supplyops/           SupplyOps : plateforme de saisie (seule a ecrire les seeds)
 cockpit/             SupplySense : cockpit web local (stdlib, lecture seule)
 n8n/                 workflow n8n importable (alerte rupture)
 docs/                vitrine GitHub Pages + exemple de rapport + plist nocturne
-tests/               193 tests pytest : base fixture + copies temporaires de seeds
+tests/               237 tests pytest : base fixture + copies temporaires de seeds
 run_e2e.sh           pipeline local = pipeline CI
 ```
 

@@ -227,7 +227,7 @@
       Chaque module ci-dessous part d'un probleme metier concret, se declenche tout seul
       (planification ou evenement), s'appuie uniquement sur les marts valides par les tests dbt,
       et produit une sortie directement utilisable : un message Slack, une reponse chiffree,
-      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (193 tests) et
+      un rapport, un diagnostic ou un brouillon a valider. Tout est teste (237 tests) et
       fonctionne sans cle d'API grace a des modes de repli deterministes.
     </div>
 
@@ -433,11 +433,51 @@
       <a class="lien-module" href="https://github.com/adh-studio/supply-data-agents/tree/main/cockpit">Voir le cockpit</a>
     </section>
 
+    <!-- Module 7 : contrats de donnees -->
+    <section class="carte-module">
+      <div class="entete">
+        <div class="pastille b-vert">&#128220;</div>
+        <h2>Contrats de donnees vivants</h2>
+        <span class="badge b-vert">ODCS v3 (Bitol)</span>
+      </div>
+      <p class="probleme">
+        <strong>Le probleme :</strong> un schema qui change ou une saisie aberrante
+        (prix negatif, famille inconnue, inventaire perime) casse silencieusement les
+        indicateurs. Un contrat qui dort dans un wiki ne protege personne : il faut
+        qu'il soit verifie a chaque publication.
+      </p>
+      <div class="grille">
+        <div class="bloc-info">
+          <div class="titre-bloc">Le contrat, cote producteur</div>
+          4 contrats ODCS v3 (standard Bitol) publies dans le repo dbt :
+          referentiel produits, stocks quotidiens (SLA de fraicheur : dernier
+          inventaire de moins de 7 jours), ventes et lots d'import. Chaque contrat
+          decrit le schema, la semantique des colonnes, les regles de qualite,
+          le SLA et son owner.
+        </div>
+        <div class="bloc-info">
+          <div class="titre-bloc">La porte, cote consommateur</div>
+          33 regles verifiees AVANT chaque dbt build : schema et types, unicite,
+          integrite croisee, regles metier (marge positive, fret coherent avec le
+          delai), fraicheur. La moindre violation refuse la publication, previent
+          dans SupplySense et depose un diagnostic en francais.
+        </div>
+      </div>
+      <div class="flux">
+        <span class="etape">Saisie SupplyOps</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Validation des 4 contrats</span><span class="f">&rarr;</span>
+        <span class="etape">dbt build si conforme</span><span class="f">&rarr;</span>
+        <span class="etape accentuee">Refus + notification sinon</span><span class="f">&rarr;</span>
+        <span class="etape">Vue Contrats SupplySense</span>
+      </div>
+      <a class="lien-module" href="https://github.com/adh-studio/supply-dbt-warehouse/tree/main/contracts">Voir les contrats ODCS</a>
+    </section>
+
     <div class="intro">
       <strong>Ce que ce repo demontre cote produit :</strong> partir du probleme metier et non
       de la technologie, choisir le bon declencheur, mettre des garde-fous avant l'IA
       (lecture seule, allowlist SQL, validation humaine), prevoir un mode degrade sans LLM,
-      et rendre chaque automatisation testable et observable. 193 tests automatises tournent
+      et rendre chaque automatisation testable et observable. 237 tests automatises tournent
       a chaque modification, sans secret ni reseau.
     </div>
 

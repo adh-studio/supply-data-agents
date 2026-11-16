@@ -26,6 +26,8 @@ API REST JSON :
   GET  /api/pipeline                  etat du dernier build dbt + diagnostics
   POST /api/pipeline/rafraichir       build dbt en arriere-plan (409 si verrou)
   GET  /api/notifications             publications SupplyOps + saisies en attente
+  GET  /api/contrats                  verdict des contrats de donnees ODCS
+  POST /api/contrats/verifier         revalide les contrats (sans build)
 """
 
 from __future__ import annotations
@@ -362,6 +364,27 @@ def etat_pipeline() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Contrats de donnees : validation a la demande (jamais pendant un build)
+# ---------------------------------------------------------------------------
+
+_verrou_contrats = threading.Lock()
+_cache_contrats: dict = {"verdict": None}
+
+
+def verifier_contrats(forcer: bool = False) -> dict:
+    """Verdict des contrats ODCS, memorise jusqu'a la prochaine demande.
+
+    La validation lit les seeds et les contrats du repo dbt (lecture
+    seule, via contrats.moteur) : premiere demande ou forcer=True la
+    relancent, sinon le dernier verdict est servi avec son horodatage.
+    """
+    with _verrou_contrats:
+        if forcer or _cache_contrats["verdict"] is None:
+            _cache_contrats["verdict"] = moteur_pipeline.verifier_contrats()
+        return _cache_contrats["verdict"]
+
+
 NB_NOTIFICATIONS_MAX = 30
 
 
@@ -394,6 +417,9 @@ def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
                 "total": int(entree.get("total") or 0),
                 "modifications": list(entree.get("modifications") or []),
                 "impact": list((entree.get("impact") or {}).get("resume") or []),
+                "regles_violees": list(
+                    (entree.get("contrats") or {}).get("regles_violees") or []
+                ),
             }
         )
 
@@ -534,6 +560,8 @@ class Cockpit(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, **etat_pipeline()})
             if chemin == "/api/notifications":
                 return self._json(200, {"ok": True, **calculer_notifications()})
+            if chemin == "/api/contrats":
+                return self._json(200, {"ok": True, **verifier_contrats()})
             if chemin == "/rapport-hebdo.html":
                 chemin_html = os.path.join(racine(), "docs", "rapport-hebdo.html")
                 if os.path.exists(chemin_html):
@@ -579,6 +607,11 @@ class Cockpit(BaseHTTPRequestHandler):
             if chemin == "/api/pipeline/rafraichir":
                 code, reponse = demarrer_build()
                 return self._json(code, reponse)
+
+            if chemin == "/api/contrats/verifier":
+                return self._json(
+                    200, {"ok": True, **verifier_contrats(forcer=True)}
+                )
 
             if chemin == "/api/qa":
                 question = (donnees.get("question") or "").strip()

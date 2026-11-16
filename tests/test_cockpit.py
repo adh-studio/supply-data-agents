@@ -316,6 +316,146 @@ def test_fiches_limite_invalide(cockpit):
 
 
 # ---------------------------------------------------------------------------
+# Vue Produits : catalogue consultable (marts joints + statut de fiche)
+# ---------------------------------------------------------------------------
+
+
+CHAMPS_PRODUIT = {
+    "id_produit",
+    "nom_produit",
+    "famille",
+    "segment",
+    "rang_ca",
+    "quantite_vendue",
+    "chiffre_affaires",
+    "marge_brute",
+    "taux_marge_produit",
+    "stock_total",
+    "nb_entrepots",
+    "statut_stock_pire",
+    "couverture_min_jours",
+    "statut_fiche",
+}
+
+
+def _deposer_fiche_test(racine, dossier, id_produit):
+    """Depose une fiche minimale valide dans un dossier de la racine de test."""
+    chemin_dossier = os.path.join(racine, dossier)
+    os.makedirs(chemin_dossier, exist_ok=True)
+    chemin = os.path.join(chemin_dossier, f"{id_produit}.md")
+    with open(chemin, "w", encoding="utf-8") as fichier:
+        fichier.write(
+            "---\n"
+            f"id_produit: {id_produit}\n"
+            "nom_produit: Produit de test\n"
+            "statut: validee\n"
+            "mode: gabarit\n"
+            "genere_le: '2026-01-01'\n"
+            "---\n\n"
+            "# Titre de fiche de test\n\n"
+            "Description de fiche de test.\n\n"
+            "## Points forts\n\n"
+            "- Premier point\n"
+            "- Deuxieme point\n"
+            "- Troisieme point\n"
+        )
+    return chemin
+
+
+def test_produits_liste(cockpit):
+    """Une ligne par produit du referentiel, champs complets et agregats justes."""
+    code, donnees = appel(cockpit, "/api/produits")
+    assert code == 200
+    assert donnees["ok"] is True
+    produits = donnees["produits"]
+    nb_referentiel = base.requete(
+        "SELECT COUNT(*) AS nb FROM offre_top_flop_produits"
+    )[0]["nb"]
+    assert donnees["nb_produits"] == len(produits) == int(nb_referentiel)
+    for produit in produits:
+        assert CHAMPS_PRODUIT <= set(produit), produit["id_produit"]
+
+    par_id = {p["id_produit"]: p for p in produits}
+    # P001 est en rupture dans la fixture : le pire statut doit le refleter.
+    assert par_id["P001"]["statut_stock_pire"] == "rupture"
+    assert par_id["P001"]["couverture_min_jours"] == 0.0
+    # Taux de marge = marge brute / CA pour un produit qui vend.
+    ligne = base.requete(
+        "SELECT chiffre_affaires, marge_brute FROM offre_top_flop_produits "
+        "WHERE id_produit = 'P001'"
+    )[0]
+    attendu = round(float(ligne["marge_brute"]) / float(ligne["chiffre_affaires"]), 4)
+    assert par_id["P001"]["taux_marge_produit"] == pytest.approx(attendu)
+    # Les agregats de stock collent au mart ligne a ligne.
+    stock = base.requete(
+        "SELECT SUM(quantite_disponible) AS total, COUNT(*) AS nb "
+        "FROM supply_couverture_stock WHERE id_produit = 'P001'"
+    )[0]
+    assert par_id["P001"]["stock_total"] == int(stock["total"])
+    assert par_id["P001"]["nb_entrepots"] == int(stock["nb"])
+
+
+def test_produits_statut_fiche_reflete(cockpit):
+    """Une fiche deposee dans validees/ se voit dans statut_fiche."""
+    chemin = _deposer_fiche_test(cockpit["racine"], "validees", "P010")
+    try:
+        code, donnees = appel(cockpit, "/api/produits")
+        assert code == 200
+        par_id = {p["id_produit"]: p for p in donnees["produits"]}
+        assert par_id["P010"]["statut_fiche"] == "validee"
+    finally:
+        os.remove(chemin)
+
+
+def test_produit_detail_complet(cockpit):
+    """Le detail expose les entrepots et la fiche lue depuis son dossier."""
+    chemin = _deposer_fiche_test(cockpit["racine"], "validees", "P007")
+    try:
+        code, donnees = appel(cockpit, "/api/produits/P007")
+        assert code == 200
+        assert donnees["ok"] is True
+        assert CHAMPS_PRODUIT <= set(donnees)
+        assert donnees["statut_fiche"] == "validee"
+
+        nb_lignes = base.requete(
+            "SELECT COUNT(*) AS nb FROM supply_couverture_stock "
+            "WHERE id_produit = 'P007'"
+        )[0]["nb"]
+        assert len(donnees["entrepots"]) == int(nb_lignes)
+        for entrepot in donnees["entrepots"]:
+            assert set(entrepot) == {"nom_entrepot", "quantite", "couverture", "statut"}
+        # P007 est en rupture dans la fixture : au moins une ligne le dit.
+        assert any(e["statut"] == "rupture" for e in donnees["entrepots"])
+        assert donnees["statut_stock_pire"] == "rupture"
+
+        fiche = donnees["fiche"]
+        assert fiche["titre"] == "Titre de fiche de test"
+        assert fiche["description"] == "Description de fiche de test."
+        assert fiche["points_forts"] == [
+            "Premier point",
+            "Deuxieme point",
+            "Troisieme point",
+        ]
+        assert fiche["mode"] == "gabarit"
+    finally:
+        os.remove(chemin)
+
+
+def test_produit_detail_sans_fiche(cockpit):
+    """Un produit sans fiche retourne fiche: null et statut aucune."""
+    code, donnees = appel(cockpit, "/api/produits/P010")
+    assert code == 200
+    assert donnees["statut_fiche"] == "aucune"
+    assert donnees["fiche"] is None
+
+
+def test_produit_detail_inconnu(cockpit):
+    code, donnees = appel(cockpit, "/api/produits/INCONNU")
+    assert code == 404
+    assert donnees["ok"] is False
+
+
+# ---------------------------------------------------------------------------
 # Sante des donnees (gardien sur ses deux fixtures)
 # ---------------------------------------------------------------------------
 

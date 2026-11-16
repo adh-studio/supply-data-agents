@@ -18,6 +18,11 @@ API REST JSON :
   GET  /api/qa/journal                dernieres entrees du journal d'audit
   GET  /api/rapport                   KPI du rapport hebdo + lien HTML
   POST /api/rapport/generer           regenere rapport.md + docs/*.html
+  GET  /api/produits                  catalogue consultable : une ligne par
+                                      produit du referentiel (ventes, marge,
+                                      stock, pire statut, statut de fiche)
+  GET  /api/produits/<id>             detail d'un produit : memes champs +
+                                      stock par entrepot + fiche si existante
   GET  /api/fiches                    fiches en attente / validees / rejetees
   GET  /api/fiches/couverture         statut de fiche de chaque produit du
                                       referentiel + compteurs de couverture
@@ -77,6 +82,7 @@ MIME = {
 }
 
 _REGEX_FICHE = re.compile(r"^/api/fiches/([A-Za-z0-9_-]+)/(approuver|rejeter)$")
+_REGEX_PRODUIT = re.compile(r"^/api/produits/([A-Za-z0-9_-]+)$")
 
 
 def racine() -> str:
@@ -255,6 +261,143 @@ def lister_fiches() -> dict:
                         continue
         resultat[cle] = fiches
     return resultat
+
+
+# ---------------------------------------------------------------------------
+# Vue Produits : le catalogue consultable (marts joints + statut de fiche)
+# ---------------------------------------------------------------------------
+
+# Du pire au moins grave : une rupture l'emporte toujours sur un surstock.
+_ORDRE_PIRE_STOCK = {"rupture": 0, "dormant": 1, "surstock": 2, "sain": 3}
+
+_DOSSIER_PAR_STATUT_FICHE = {
+    "validee": moteur_fiches.NOM_DOSSIER_VALIDEES,
+    "en_attente": moteur_fiches.NOM_DOSSIER_A_VALIDER,
+    "rejetee": moteur_fiches.NOM_DOSSIER_REJETEES,
+}
+
+
+def _stocks_par_produit() -> dict[str, list[dict]]:
+    """Lignes de supply_couverture_stock groupees par produit."""
+    lignes = base.requete(
+        "SELECT id_produit, nom_entrepot, quantite_disponible, "
+        "couverture_jours, statut_couverture "
+        "FROM supply_couverture_stock ORDER BY id_produit, nom_entrepot"
+    )
+    stocks: dict[str, list[dict]] = {}
+    for ligne in lignes:
+        stocks.setdefault(ligne["id_produit"], []).append(ligne)
+    return stocks
+
+
+def _resume_stock(lignes: list[dict]) -> dict:
+    """Agregats de stock d'un produit : total, pire statut, couverture min."""
+    if not lignes:
+        return {
+            "stock_total": 0,
+            "nb_entrepots": 0,
+            "statut_stock_pire": "aucun",
+            "couverture_min_jours": None,
+        }
+    pire = min(
+        (ligne["statut_couverture"] for ligne in lignes),
+        key=lambda statut: _ORDRE_PIRE_STOCK.get(statut, 99),
+    )
+    couvertures = [
+        float(ligne["couverture_jours"])
+        for ligne in lignes
+        if ligne["couverture_jours"] is not None
+    ]
+    return {
+        "stock_total": sum(int(ligne["quantite_disponible"]) for ligne in lignes),
+        "nb_entrepots": len(lignes),
+        "statut_stock_pire": pire,
+        "couverture_min_jours": min(couvertures) if couvertures else None,
+    }
+
+
+def _ligne_produit(produit: dict, stocks: list[dict], statut_fiche: str) -> dict:
+    """Ligne de la vue Produits : referentiel + agregats stock + fiche."""
+    chiffre_affaires = float(produit["chiffre_affaires"] or 0)
+    marge_brute = float(produit["marge_brute"] or 0)
+    return {
+        "id_produit": produit["id_produit"],
+        "nom_produit": produit["nom_produit"],
+        "famille": produit["famille"],
+        "segment": produit["segment"],
+        "rang_ca": int(produit["rang_ca"]),
+        "quantite_vendue": int(produit["quantite_vendue"] or 0),
+        "chiffre_affaires": round(chiffre_affaires, 2),
+        "marge_brute": round(marge_brute, 2),
+        "taux_marge_produit": round(marge_brute / chiffre_affaires, 4)
+        if chiffre_affaires > 0
+        else None,
+        **_resume_stock(stocks),
+        "statut_fiche": statut_fiche,
+    }
+
+
+def _referentiel_produits() -> list[dict]:
+    """Le referentiel complet avec ses chiffres commerciaux."""
+    return base.requete(
+        "SELECT id_produit, nom_produit, famille, segment, rang_ca, "
+        "quantite_vendue, chiffre_affaires, marge_brute "
+        "FROM offre_top_flop_produits ORDER BY id_produit"
+    )
+
+
+def lister_produits() -> dict:
+    """GET /api/produits : une ligne par produit du referentiel."""
+    stocks = _stocks_par_produit()
+    fiches = {
+        p["id_produit"]: p["statut"]
+        for p in moteur_fiches.lister_couverture(racine=racine())
+    }
+    produits = [
+        _ligne_produit(
+            produit,
+            stocks.get(produit["id_produit"], []),
+            fiches.get(produit["id_produit"], "aucune"),
+        )
+        for produit in _referentiel_produits()
+    ]
+    return {"produits": produits, "nb_produits": len(produits)}
+
+
+def detail_produit(id_produit: str) -> tuple[int, dict]:
+    """GET /api/produits/<id> : detail, stock par entrepot et fiche eventuelle."""
+    referentiel = [
+        p for p in _referentiel_produits() if p["id_produit"] == id_produit
+    ]
+    if not referentiel:
+        return 404, {
+            "ok": False,
+            "erreur": f"Produit inconnu du referentiel : {id_produit}",
+        }
+    stocks = _stocks_par_produit().get(id_produit, [])
+    statut = moteur_fiches.statut_fiche(id_produit, racine=racine())
+    detail = _ligne_produit(referentiel[0], stocks, statut)
+    detail["entrepots"] = [
+        {
+            "nom_entrepot": ligne["nom_entrepot"],
+            "quantite": int(ligne["quantite_disponible"]),
+            "couverture": float(ligne["couverture_jours"])
+            if ligne["couverture_jours"] is not None
+            else None,
+            "statut": ligne["statut_couverture"],
+        }
+        for ligne in stocks
+    ]
+    fiche = None
+    nom_dossier = _DOSSIER_PAR_STATUT_FICHE.get(statut)
+    if nom_dossier:
+        chemin = os.path.join(racine(), nom_dossier, f"{id_produit}.md")
+        try:
+            fiche = _resume_fiche(chemin)
+        except (ValueError, OSError):
+            fiche = None
+    detail["fiche"] = fiche
+    return 200, {"ok": True, **detail}
 
 
 def calculer_couverture() -> dict:
@@ -770,6 +913,12 @@ class Cockpit(BaseHTTPRequestHandler):
                         "lien_html": "rapport-hebdo.html",
                     },
                 )
+            if chemin == "/api/produits":
+                return self._json(200, {"ok": True, **lister_produits()})
+            correspondance_produit = _REGEX_PRODUIT.match(chemin)
+            if correspondance_produit:
+                code, reponse = detail_produit(correspondance_produit.group(1))
+                return self._json(code, reponse)
             if chemin == "/api/fiches":
                 return self._json(200, {"ok": True, **lister_fiches()})
             if chemin == "/api/fiches/couverture":

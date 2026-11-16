@@ -391,13 +391,17 @@ NB_NOTIFICATIONS_MAX = 30
 def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
     """Fusionne publications SupplyOps et saisies en attente, recent d'abord.
 
-    Deux familles d'evenements, chacune avec un id stable derive de
+    Trois familles d'evenements, chacune avec un id stable derive de
     l'horodatage (le front s'en sert pour compter les non-lus) :
     - "publication" : les builds declenches par SupplyOps ou SupplySense
       dans l'historique de etat_build.json, avec les modifications
       publiees par le build et les phrases d'impact sur les KPI ;
+    - "contrat" : chaque amendement de contrat journalise par SupplyOps
+      (type=contrat dans journal_ops.jsonl) devient son propre evenement,
+      qu'il soit deja couvert par une publication ou non ;
     - "attente" : un evenement unique qui agrege les lignes publie=false
-      de journal_ops.jsonl (les chiffres affiches ne les incluent pas).
+      de journal_ops.jsonl, amendements exclus (un amendement de contrat
+      n'est pas une saisie en attente de publication).
     """
     evenements: list[dict] = []
     etat = moteur_pipeline.lire_etat()
@@ -423,10 +427,25 @@ def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
             }
         )
 
+    journal_ops = moteur_pipeline.lire_journal_ops()
+    for ligne in journal_ops:
+        if ligne.get("type") != "contrat":
+            continue
+        horodatage = ligne.get("horodatage") or ""
+        evenements.append(
+            {
+                "id": "contrat-" + horodatage,
+                "type": "contrat",
+                "horodatage": horodatage,
+                "action": ligne.get("action"),
+                "resume": ligne.get("resume") or "",
+            }
+        )
+
     en_attente = [
         ligne
-        for ligne in moteur_pipeline.lire_journal_ops()
-        if not ligne.get("publie")
+        for ligne in journal_ops
+        if not ligne.get("publie") and ligne.get("type") != "contrat"
     ]
     if en_attente:
         plus_recente = max(ligne.get("horodatage") or "" for ligne in en_attente)

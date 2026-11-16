@@ -20,6 +20,8 @@ API REST JSON :
   GET    /api/lots                    lots d'import et receptions
   POST   /api/lots                    creation d'un lot (1 commande par produit)
   POST   /api/lots/<id>/reception     enregistrement d'une arrivee
+  GET    /api/gouvernance/familles    familles, contrat, fichiers dbt concernes
+  POST   /api/gouvernance/familles    amendement : ajoute une famille au contrat
   POST   /api/publier                 lance le build dbt (409 si deja en cours)
 
 Chaque ecriture reussie incremente le compteur de modifications en
@@ -42,7 +44,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from pipeline import moteur as moteur_pipeline
-from supplyops import magasin
+from supplyops import gouvernance, magasin
 
 PORT_DEFAUT = 4310
 
@@ -412,9 +414,37 @@ class SupplyOps(BaseHTTPRequestHandler):
                 return self._json(
                     200, {"ok": True, "lots": magasin.lister_lots()}
                 )
+            if chemin == "/api/gouvernance/familles":
+                from contrats import moteur as moteur_contrats
+
+                verdict = moteur_contrats.valider_tout(magasin.dossier_dbt())
+                contrats = [
+                    {
+                        "id": c["id"],
+                        "nom": c["nom"],
+                        "fichier": c["fichier"],
+                        "version": c["version"],
+                        "owner": c["owner"],
+                        "nb_regles": c["nb_regles"],
+                        "statut": c["statut"],
+                    }
+                    for c in verdict.get("contrats") or []
+                ]
+                return self._json(
+                    200,
+                    {
+                        "ok": True,
+                        **gouvernance.etat_familles(),
+                        "contrats": contrats,
+                        "url_contrats_supplysense": URL_SUPPLYSENSE
+                        + "/#contrats",
+                    },
+                )
             if chemin.startswith("/api/"):
                 return self._json(404, {"ok": False, "erreur": "route inconnue"})
             return self._statique(chemin)
+        except gouvernance.ErreurGouvernance as erreur:
+            return self._json(400, {"ok": False, "erreur": str(erreur)})
         except magasin.ErreurValidation as erreur:
             return self._json(400, {"ok": False, "erreur": str(erreur)})
         except FileNotFoundError as erreur:
@@ -577,11 +607,50 @@ class SupplyOps(BaseHTTPRequestHandler):
                 )
                 return self._json(201, {"ok": True, **resultat})
 
+            if chemin == "/api/gouvernance/familles":
+                if not donnees.get("confirme"):
+                    return self._json(
+                        400,
+                        {
+                            "ok": False,
+                            "erreur": (
+                                "Confirmation obligatoire : cocher "
+                                "\"Je comprends que ceci amende le contrat\" "
+                                "(champ confirme)."
+                            ),
+                        },
+                    )
+                with _verrou_publication:
+                    publication_en_cours = _publication["en_cours"]
+                if publication_en_cours:
+                    return self._json(
+                        409,
+                        {
+                            "ok": False,
+                            "erreur": (
+                                "Amendement refuse : une publication est en "
+                                "cours. Reessayer apres le build."
+                            ),
+                        },
+                    )
+                resultat = gouvernance.amender_famille(donnees.get("famille"))
+                journaliser_ops(
+                    "contrat", "amendement",
+                    f"Contrat referentiel_produits amende "
+                    f"v{resultat['version_apres']} : famille "
+                    f"{resultat['famille']} ajoutee",
+                )
+                return self._json(201, {"ok": True, **resultat})
+
             if chemin == "/api/publier":
                 code, corps = lancer_publication()
                 return self._json(code, corps)
 
             return self._json(404, {"ok": False, "erreur": "route inconnue"})
+        except gouvernance.ErreurVerrouBuild as erreur:
+            return self._json(409, {"ok": False, "erreur": str(erreur)})
+        except gouvernance.ErreurGouvernance as erreur:
+            return self._json(400, {"ok": False, "erreur": str(erreur)})
         except magasin.ErreurValidation as erreur:
             return self._json(400, {"ok": False, "erreur": str(erreur)})
         except Exception as erreur:

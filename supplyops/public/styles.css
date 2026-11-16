@@ -307,3 +307,13 @@ tbody tr.clic{cursor:pointer}
   nav a{justify-content:center}.grid2{grid-template-columns:1fr}.search{min-width:130px}.content{padding:18px 16px 60px}
   .topbar{padding:12px 16px}.badge-env{display:none}.frow2{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ============ gouvernance : amendement de contrat ============ */
+.impactbox{margin:13px 0;padding:12px 14px;border:1px solid var(--line2);border-left:3px solid var(--amber600);
+  border-radius:10px;background:var(--bg2);font-size:12.4px;line-height:1.6;color:var(--ink2)}
+.impactbox b{display:block;margin-bottom:6px;color:var(--ink)}
+.impactbox ul{margin:0 0 7px;padding-left:18px}
+.impactbox li{margin:3px 0}
+.confirmrow{display:flex;align-items:center;gap:9px;margin:0 0 11px;padding:10px 12px;border:1px dashed var(--line2);
+  border-radius:10px;font-size:12.6px;font-weight:650;color:var(--ink2);cursor:pointer;user-select:none}
+.confirmrow input{width:15px;height:15px;accent-color:var(--amber600);cursor:pointer}

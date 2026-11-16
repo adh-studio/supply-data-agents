@@ -733,6 +733,17 @@ function vContrats() {
       ${ok ? `<span class="chip ok" style="margin-left:auto"><span class="dot2" style="background:var(--ok)"></span>conforme</span>`
         : `<span class="chip bad" style="margin-left:auto"><span class="dot2" style="background:var(--bad)"></span>viole</span>`}`));
     const corps = el('div', 'cbody');
+    if ((c.changelog || []).length) {
+      const n = c.changelog.length;
+      corps.appendChild(el('details', 'chglog', `
+        <summary>${ICONS.contrat} Historique du contrat · ${n} amendement${n > 1 ? 's' : ''}</summary>
+        <div class="chgliste">${c.changelog.map(a => `
+          <div class="chgrow">
+            <span class="pill terra">v${esc(a.version)}</span>
+            <span class="chgdesc"><b>${esc(a.description)}</b>
+              <span class="sub2">${esc(a.date)} · par ${esc(a.auteur)}</span></span>
+          </div>`).join('')}</div>`));
+    }
     if (c.fraicheur) {
       const fok = c.fraicheur.statut === 'conforme';
       corps.appendChild(el('div', 'csla' + (fok ? '' : ' ko'), `
@@ -785,6 +796,14 @@ function notifItem(n) {
         <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
       <ul class="nliste">${(n.resumes || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
       <a class="btn sm nbtn" href="http://127.0.0.1:4310/#publication" target="_blank" rel="noopener">Ouvrir SupplyOps ↗</a>
+    </div>`;
+  }
+  if (n.type === 'contrat') {
+    return `<div class="notifitem contrat${nonLu ? ' nonlu' : ''}">
+      <div class="nhead"><span class="ntitle">${ICONS.contrat} Amendement de contrat</span>
+        <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
+      <div class="nrow"><span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${esc(n.resume)}</span></div>
+      <a class="btn sm nbtn" href="#contrats">Ouvrir la vue Contrats</a>
     </div>`;
   }
   const ok = n.statut === 'succes';

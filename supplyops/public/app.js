@@ -19,10 +19,12 @@ const ICONS = {
   croix: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   crayon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>',
+  parchemin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 16c.8-1.3 1.6-2 2.4-2 1.2 0 .9 2 2 2 .8 0 1.2-.6 2-.6"/><path d="M9 11h6"/></svg>',
 };
 
 const S = {
   etat: null, refs: null, produits: null, inventaire: null, ventes: null, lots: null,
+  gouv: null, gouvApercu: null, gouvConfirme: false,
   page: 'produits', q: '', filtreFamille: '', pubSondage: null, pubApresLancement: false,
 };
 
@@ -492,6 +494,124 @@ function vPublication() {
   return v;
 }
 
+// ---------------- gouvernance : amendement de contrat en self-service ----------------
+const MOTIF_FAMILLE = /^[0-9A-Za-zÀ-ÖØ-öø-ÿ][0-9A-Za-zÀ-ÖØ-öø-ÿ' -]{0,39}$/;
+
+function validerNomFamille(nom) {
+  const texte = (nom || '').trim();
+  if (!texte) return { erreur: 'Le nom de la famille est obligatoire.' };
+  if (!MOTIF_FAMILLE.test(texte)) {
+    return { erreur: 'Nom invalide : lettres, chiffres, espaces, apostrophes et traits d\'union uniquement (40 caracteres au plus).' };
+  }
+  const existantes = ((S.gouv && S.gouv.familles) || []).map(f => f.nom.trim().toLowerCase());
+  if (existantes.includes(texte.toLowerCase())) {
+    return { erreur: 'La famille "' + texte + '" existe deja dans le contrat : pas de doublon.' };
+  }
+  return { nom: texte };
+}
+
+function vGouvernance() {
+  const v = el('div');
+  const g = S.gouv;
+  if (!g) { v.appendChild(el('div', 'empty', 'Chargement en cours')); return v; }
+
+  v.appendChild(el('div', 'notice', `<b>Le contrat s'amende ici, sans developpeur.</b> Ajouter une famille met a jour, en un geste et de facon atomique :
+    le contrat referentiel_produits (version + changelog), les controles dbt (accepted_values) et le formulaire produit de SupplyOps.
+    La suppression n'est pas proposee : un contrat s'etend, il ne se reecrit pas.`));
+
+  const grille = el('div', 'grid2');
+  const left = el('div', 'gcol');
+
+  // Les 4 contrats de donnees publies dans le repo dbt.
+  const [c1] = card('Contrats de donnees',
+    `${(g.contrats || []).length} contrats ODCS publies dans supply-dbt-warehouse/contracts`,
+    { flush: true, head: `<a class="btn sm" style="margin-left:auto" href="${esc(g.url_contrats_supplysense || '#')}" target="_blank" rel="noopener">Vue Contrats SupplySense ↗</a>` });
+  const wrap1 = el('div', 'tablewrap');
+  const t1 = el('table', '', `<thead><tr><th>Contrat</th><th>Version</th><th>Owner</th><th style="text-align:right">Regles</th><th>Statut</th></tr></thead>`);
+  const tb1 = el('tbody');
+  for (const c of g.contrats || []) {
+    tb1.appendChild(el('tr', '', `
+      <td><b style="font-weight:680">${esc(c.nom)}</b><div class="sub2 mono">${esc(c.fichier)}</div></td>
+      <td><span class="pill terra">v${esc(c.version)}</span></td>
+      <td>${esc(c.owner)}</td>
+      <td class="mono" style="text-align:right">${nfr(c.nb_regles)}</td>
+      <td>${c.statut === 'conforme'
+        ? '<span class="chip ok">conforme</span>'
+        : '<span class="chip bad">viole</span>'}</td>`));
+  }
+  t1.appendChild(tb1); wrap1.appendChild(t1); c1.appendChild(wrap1);
+  left.appendChild(c1);
+
+  // Les familles actuellement autorisees par le contrat.
+  const [c2] = card('Familles du contrat',
+    `${(g.familles || []).length} familles autorisees · contrat ${esc((g.contrat || {}).fichier || '')} v${esc((g.contrat || {}).version || '')}`,
+    { flush: true });
+  const wrap2 = el('div', 'tablewrap');
+  const t2 = el('table', '', `<thead><tr><th>Famille</th><th style="text-align:right">Produits au catalogue</th></tr></thead>`);
+  const tb2 = el('tbody');
+  for (const f of g.familles || []) {
+    tb2.appendChild(el('tr', '', `
+      <td><span class="pill terra">${esc(f.nom)}</span></td>
+      <td style="text-align:right"><span class="pill">${nfr(f.nb_produits)} produit${f.nb_produits > 1 ? 's' : ''}</span></td>`));
+  }
+  t2.appendChild(tb2); wrap2.appendChild(t2); c2.appendChild(wrap2);
+  left.appendChild(c2);
+  grille.appendChild(left);
+
+  // Formulaire d'amendement : apercu d'impact puis confirmation explicite.
+  const right = el('div', 'gcol');
+  const [c3, b3] = card('Proposer une nouvelle famille',
+    'Validation, apercu d\'impact, puis confirmation explicite avant amendement');
+  const apercu = S.gouvApercu;
+  const fichiers = (g.fichiers_dbt || []).map(f => f.relatif);
+  b3.innerHTML = `
+    ${g.build_en_cours ? '<div class="avertbox">Un build dbt est en cours : l\'amendement est bloque le temps du build (verrou pipeline).</div>' : ''}
+    <div class="erreurbox" id="gErr" style="display:none"></div>
+    ${champ('Nom de la nouvelle famille', `<input id="gNom" value="${esc(apercu || '')}" placeholder="Ex. Drones" ${g.build_en_cours ? 'disabled' : ''}>`,
+      'Lettres, chiffres, espaces, apostrophes et traits d\'union · pas de doublon')}
+    <button class="btn" id="gVoir" style="width:100%;justify-content:center" ${g.build_en_cours ? 'disabled' : ''}>Voir l'impact de l'amendement</button>
+    ${apercu ? `
+    <div class="impactbox" id="gImpact">
+      <b>Apercu d'impact : la famille "${esc(apercu)}" sera autorisee</b>
+      <ul>
+        <li>dans le contrat <b>referentiel_produits</b> : version ${esc((g.contrat || {}).version || '?')} → ${esc(g.version_apres_amendement || '?')}, entree de changelog datee (auteur SupplyOps) ;</li>
+        <li>dans les controles dbt : accepted_values de ${fichiers.length} fichier(s)<br><span class="mono sub2">${fichiers.map(esc).join('<br>')}</span></li>
+        <li>dans le formulaire produit de SupplyOps (liste des familles).</li>
+      </ul>
+      <div class="sub2">Les publications futures l'accepteront. Les familles existantes et les produits ne sont pas touches.</div>
+    </div>
+    <label class="confirmrow"><input type="checkbox" id="gConf" ${S.gouvConfirme ? 'checked' : ''}>
+      Je comprends que ceci amende le contrat</label>
+    <button class="btn ambre" id="gBtn" style="width:100%;justify-content:center" ${S.gouvConfirme && !g.build_en_cours ? '' : 'disabled'}>
+      ${ICONS.check} Amender le contrat</button>` : ''}`;
+
+  const err = b3.querySelector('#gErr');
+  const montrerErreur = m => { err.style.display = ''; err.textContent = m; };
+  b3.querySelector('#gVoir').onclick = () => {
+    const verdict = validerNomFamille(b3.querySelector('#gNom').value);
+    if (verdict.erreur) { S.gouvApercu = null; S.gouvConfirme = false; montrerErreur(verdict.erreur); return; }
+    S.gouvApercu = verdict.nom; S.gouvConfirme = false; render();
+  };
+  b3.querySelector('#gNom').addEventListener('input', e => {
+    if (S.gouvApercu && e.target.value.trim() !== S.gouvApercu) { S.gouvApercu = null; S.gouvConfirme = false; render(); $('#gNom').focus(); }
+  });
+  const caseConf = b3.querySelector('#gConf');
+  if (caseConf) caseConf.onchange = e => { S.gouvConfirme = e.target.checked; render(); };
+  const bAmender = b3.querySelector('#gBtn');
+  if (bAmender) bAmender.onclick = async function () {
+    this.disabled = true;
+    const r = await api('/gouvernance/familles', { method: 'POST', body: { famille: S.gouvApercu, confirme: true } });
+    if (!r.ok) { this.disabled = false; montrerErreur(r.erreur || 'echec de l\'amendement'); return; }
+    toast(`${ICONS.check} Contrat amende v${esc(r.version_apres)} : famille ${esc(r.famille)} ajoutee (${r.nb_listes_modifiees} liste(s) accepted_values)`);
+    S.gouvApercu = null; S.gouvConfirme = false;
+    await rafraichir(['gouv', 'refs', 'etat']); render();
+  };
+  right.appendChild(c3);
+  grille.appendChild(right);
+  v.appendChild(grille);
+  return v;
+}
+
 // sondage pendant la publication
 function demarrerSondage() {
   if (S.pubSondage) return;
@@ -535,6 +655,7 @@ const CHARGEURS = {
   inventaire: async () => { const r = await api('/inventaire'); if (r.ok) S.inventaire = r.inventaire; },
   ventes: async () => { const r = await api('/ventes'); if (r.ok) S.ventes = r.ventes; },
   lots: async () => { const r = await api('/lots'); if (r.ok) S.lots = r.lots; },
+  gouv: async () => { const r = await api('/gouvernance/familles'); if (r.ok) S.gouv = r; },
 };
 async function rafraichir(cles) { await Promise.all(cles.map(c => CHARGEURS[c]())); }
 
@@ -545,6 +666,7 @@ const PAGES = [
   ['ventes', 'Ventes', ICONS.vente, 1],
   ['lots', 'Lots d\'import', ICONS.lot, 1],
   ['publication', 'Publication', ICONS.publier, 2],
+  ['gouvernance', 'Gouvernance', ICONS.parchemin, 3],
 ];
 const BESOINS = {
   produits: ['refs', 'produits'],
@@ -552,6 +674,7 @@ const BESOINS = {
   ventes: ['refs', 'produits', 'ventes'],
   lots: ['refs', 'produits', 'lots'],
   publication: ['etat'],
+  gouvernance: ['gouv'],
 };
 const SUBS = {
   produits: () => 'Catalogue : creation, prix, familles du contrat',
@@ -559,20 +682,21 @@ const SUBS = {
   ventes: () => 'Saisie rapide et journal des ventes',
   lots: () => 'Commandes fournisseurs AIR / SEA et receptions',
   publication: () => 'Envoyer les saisies vers l\'entrepot analytique',
+  gouvernance: () => 'Contrats de donnees et amendement des familles',
 };
-const VIEWS = { produits: vProduits, inventaire: vInventaire, ventes: vVentes, lots: vLots, publication: vPublication };
+const VIEWS = { produits: vProduits, inventaire: vInventaire, ventes: vVentes, lots: vLots, publication: vPublication, gouvernance: vGouvernance };
 
 function nav() {
   const counts = { publication: S.etat ? (S.etat.modifications_en_attente || 0) : 0 };
   const lotsEnCours = S.lots ? S.lots.filter(l => l.statut !== 'recue').length : 0;
   if (lotsEnCours) counts.lots = lotsEnCours;
-  const n1 = $('#nav1'), n2 = $('#nav2');
-  n1.innerHTML = ''; n2.innerHTML = '';
+  const n1 = $('#nav1'), n2 = $('#nav2'), n3 = $('#nav3');
+  n1.innerHTML = ''; n2.innerHTML = ''; n3.innerHTML = '';
   for (const [id, label, icon, grp] of PAGES) {
     const a = el('a', S.page === id ? 'on' : '', icon + `<span class="txt">${label}</span>` +
       (counts[id] ? `<span class="count ${id === 'publication' ? 'hot' : ''}">${counts[id]}</span>` : ''));
     a.href = '#' + id;
-    (grp === 1 ? n1 : n2).appendChild(a);
+    (grp === 1 ? n1 : grp === 2 ? n2 : n3).appendChild(a);
   }
 }
 
@@ -595,7 +719,7 @@ async function aller(page) {
   render();
 }
 
-window.addEventListener('hashchange', () => { S.q = ''; S.filtreFamille = ''; $('#q').value = ''; fermerPanneau(); aller(location.hash.slice(1) || 'produits'); });
+window.addEventListener('hashchange', () => { S.q = ''; S.filtreFamille = ''; S.gouvApercu = null; S.gouvConfirme = false; $('#q').value = ''; fermerPanneau(); aller(location.hash.slice(1) || 'produits'); });
 $('#q').addEventListener('input', e => { S.q = e.target.value.toLowerCase(); render(); });
 
 // theme : persiste, forcable par ?theme=dark|light au chargement

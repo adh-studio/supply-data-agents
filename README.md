@@ -59,7 +59,7 @@ supply-dbt-warehouse (dbt)          supply-data-agents (ce repo)
 ```
 
 Le script cree `.venv`, installe `requirements.txt`, construit la base fixture et
-lance les 237 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
+lance les 253 tests. C'est exactement ce que fait la CI GitHub Actions a chaque push.
 
 ## Les 5 modules, un exemple chacun
 
@@ -236,8 +236,44 @@ moindre regle violee, le build est refuse (statut `echec_contrats` dans
 code 1), et la cloche SupplySense annonce le refus avec les regles violees.
 La vue **Contrats** de SupplySense montre une carte par contrat (version,
 owner, pill conforme ou viole, SLA avec l'age reel, chaque regle avec son
-detail) et un bouton Reverifier (`POST /api/contrats/verifier`) qui
+detail, historique des amendements depliable quand le contrat a un
+changelog) et un bouton Reverifier (`POST /api/contrats/verifier`) qui
 revalide sans lancer de build.
+
+### Gouvernance : l'amendement de contrat en self-service
+
+Un contrat qui ne peut evoluer que par un developpeur finit contourne. La
+vue **Gouvernance** de SupplyOps (sidebar, section dediee) rend l'amendement
+central (la liste des familles autorisees du referentiel produits) possible
+en self-service, sous garde-fous :
+
+- la vue liste les 4 contrats (nom, version, owner, nombre de regles, lien
+  vers la vue Contrats de SupplySense) et les familles actuelles du contrat
+  avec le nombre de produits au catalogue par famille ;
+- le formulaire "Proposer une nouvelle famille" valide le nom (non vide,
+  caracteres simples, pas de doublon), affiche un **apercu d'impact avant
+  toute ecriture** (contrat `referentiel_produits` version X -> X+0.1.0,
+  listes `accepted_values` des fichiers dbt concernes, formulaire produit
+  de SupplyOps) puis exige la case "Je comprends que ceci amende le
+  contrat" avant le bouton Amender ;
+- `POST /api/gouvernance/familles` (module `supplyops/gouvernance.py`)
+  applique l'amendement **atomiquement** cote repo dbt : la famille est
+  inseree dans TOUTES les listes `accepted_values` de famille
+  (`models/**/schema.yml`, insertion textuelle qui preserve l'indentation
+  et le style du YAML), le contrat ODCS recoit un bump de version mineur
+  et une entree de changelog (`customProperties` : date, auteur SupplyOps,
+  description), le tout prepare et verifie en memoire avant la moindre
+  ecriture, avec restauration des originaux si une ecriture echoue ;
+- garde-fous : amendement refuse si un build est en cours (verrou
+  pipeline, 409) ou sans confirmation explicite ; la suppression d'une
+  famille n'est pas proposee (un contrat s'etend, il ne se reecrit pas) ;
+- l'evenement est journalise dans `journal_ops.jsonl` (`type: contrat`,
+  `action: amendement`) : la cloche SupplySense montre l'amendement, puis
+  la publication suivante qui l'emporte avec son impact.
+
+Les publications futures acceptent la nouvelle famille immediatement :
+SupplyOps lit les familles dynamiquement dans `schema.yml`, les controles
+dbt les acceptent, le validateur de contrats suit.
 
 ### Notifications : ce qui a change et ce que ca a entraine
 
@@ -297,7 +333,7 @@ Ce repo est volontairement petit, mais chaque module incarne un reflexe produit 
   repli deterministe. L'automatisation ne depend pas de la disponibilite d'un LLM.
 - **Observable et auditable** : journal d'audit du self-service, outbox archivee des
   alertes, surveillance anti-echec dans le workflow n8n, code de sortie exploitable.
-- **Testable et livrable** : 237 tests sur base fixture et copies temporaires de
+- **Testable et livrable** : 253 tests sur base fixture et copies temporaires de
   seeds (jamais de vrai `dbt build` ni de reseau dans pytest), CI sans secret,
   un script unique (`run_e2e.sh`) identique en local et en CI.
 
@@ -347,7 +383,7 @@ supplyops/           SupplyOps : plateforme de saisie (seule a ecrire les seeds)
 cockpit/             SupplySense : cockpit web local (stdlib, lecture seule)
 n8n/                 workflow n8n importable (alerte rupture)
 docs/                vitrine GitHub Pages + exemple de rapport + plist nocturne
-tests/               237 tests pytest : base fixture + copies temporaires de seeds
+tests/               253 tests pytest : base fixture + copies temporaires de seeds
 run_e2e.sh           pipeline local = pipeline CI
 ```
 

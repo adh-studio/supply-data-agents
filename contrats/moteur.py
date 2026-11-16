@@ -134,6 +134,23 @@ def _table_seed(repertoire_dbt: str, nom_table: str, cache: dict) -> list[dict]:
     return cache[nom_table]
 
 
+def changelog_du_contrat(contrat: dict) -> list[dict]:
+    """Historique des amendements du contrat, le plus recent d'abord.
+
+    Chaque amendement est une entree customProperties property=changelog
+    dont la value est un dictionnaire {date, version, auteur, description}
+    (c'est ce que depose l'amendement self-service de SupplyOps).
+    """
+    entrees = [
+        dict(entree["value"])
+        for entree in contrat.get("customProperties") or []
+        if entree.get("property") == "changelog"
+        and isinstance(entree.get("value"), dict)
+    ]
+    entrees.reverse()
+    return entrees
+
+
 def owner_du_contrat(contrat: dict) -> str:
     """Proprietaire du contrat : membre team de role owner (Nom - Equipe)."""
     for membre in contrat.get("team") or []:
@@ -546,6 +563,7 @@ def valider_contrat(contrat: dict, repertoire_dbt: str | None = None) -> dict:
         "fichier": contrat.get("_fichier"),
         "version": str(contrat.get("version") or ""),
         "owner": owner_du_contrat(contrat),
+        "changelog": changelog_du_contrat(contrat),
         "seeds": [
             o.get("physicalName") for o in contrat.get("schema") or []
         ],

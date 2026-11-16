@@ -296,6 +296,10 @@ def progression_fiches() -> dict:
         return dict(_progression_fiches)
 
 
+# Derniere validation en masse (evenement pour la cloche du cockpit).
+_derniere_validation_masse: dict | None = None
+
+
 def reinitialiser_progression_fiches() -> None:
     """Remet la progression a zero (isolation des tests)."""
     with _verrou_fiches:
@@ -625,6 +629,18 @@ def calculer_notifications(limite: int = NB_NOTIFICATIONS_MAX) -> dict:
             }
         )
 
+    # Validation humaine en masse des fiches (bouton Tout valider).
+    if _derniere_validation_masse:
+        evenements.append(
+            {
+                "id": "fiches-validees-" + _derniere_validation_masse["horodatage"],
+                "type": "fiches_validees",
+                "horodatage": _derniere_validation_masse["horodatage"],
+                "nb": _derniere_validation_masse["nb"],
+                "echecs": _derniere_validation_masse["echecs"],
+            }
+        )
+
     en_attente = [
         ligne
         for ligne in journal_ops
@@ -869,6 +885,20 @@ class Cockpit(BaseHTTPRequestHandler):
             if chemin == "/api/fiches/generer":
                 code, reponse = demarrer_generation_fiches(donnees)
                 return self._json(code, reponse)
+
+            if chemin == "/api/fiches/approuver-tout":
+                # Geste humain en masse : déclenché uniquement par le bouton
+                # Tout valider du cockpit, confirmé en deux temps côté interface.
+                bilan = moteur_fiches.approuver_tout(racine=racine())
+                if bilan["nb"]:
+                    global _derniere_validation_masse
+                    with _verrou_fiches:
+                        _derniere_validation_masse = {
+                            "horodatage": datetime_horodatage(),
+                            "nb": bilan["nb"],
+                            "echecs": len(bilan["echecs"]),
+                        }
+                return self._json(200, {"ok": True, **bilan})
 
             correspondance = _REGEX_FICHE.match(chemin)
             if correspondance:

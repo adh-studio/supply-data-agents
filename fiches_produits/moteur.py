@@ -636,6 +636,27 @@ def approuver(id_produit: str, racine: str = RACINE_PROJET) -> str:
     return chemin_validee
 
 
+def approuver_tout(racine: str = RACINE_PROJET) -> dict:
+    """Validation humaine en masse : approuve toutes les fiches en attente.
+
+    Reste un geste humain : cette fonction n'est appelee que par un clic
+    explicite (bouton Tout valider, confirme en deux temps dans le cockpit).
+    Retourne {"nb": n, "validees": [ids], "echecs": [{id_produit, erreur}]}.
+    """
+    ids = sorted(_ids_dossier(racine, NOM_DOSSIER_A_VALIDER))
+    validees: list[str] = []
+    echecs: list[dict] = []
+    for id_produit in ids:
+        try:
+            approuver(id_produit, racine=racine)
+            validees.append(id_produit)
+        except Exception as erreur:
+            echecs.append(
+                {"id_produit": id_produit, "erreur": f"{type(erreur).__name__}: {erreur}"}
+            )
+    return {"nb": len(validees), "validees": validees, "echecs": echecs}
+
+
 def rejeter(id_produit: str, motif: str, racine: str = RACINE_PROJET) -> str:
     """Rejet humain : bascule une fiche de a_valider/ vers rejetees/.
 

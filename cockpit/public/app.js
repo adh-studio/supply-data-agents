@@ -503,9 +503,30 @@ function vFiches() {
     await Promise.all([chargerFiches(), chargerCouverture()]); render();
   };
   bar.appendChild(bGen);
+  const fx = S.fiches || { en_attente: [], validees: [], rejetees: [] };
+  if (fx.en_attente.length) {
+    const n = fx.en_attente.length;
+    const bTout = el('button', 'btn' + (S.confirmValiderTout ? ' pri' : ''),
+      S.confirmValiderTout ? `✔ Confirmer : valider ${n} fiche(s)` : `✔ Tout valider (${n})`);
+    bTout.onclick = async () => {
+      if (!S.confirmValiderTout) { S.confirmValiderTout = true; render(); return; }
+      S.confirmValiderTout = false;
+      bTout.disabled = true;
+      const r = await api('/fiches/approuver-tout', { method: 'POST', body: {} });
+      if (r.ok) toast(`${ICONS.check} ${r.nb} fiche(s) validee(s)` + (r.echecs.length ? ` · ${r.echecs.length} echec(s)` : ''));
+      else toast('⚠️ ' + esc(r.erreur || 'echec'));
+      await Promise.all([chargerFiches(), chargerCouverture()]); render();
+    };
+    bar.appendChild(bTout);
+    if (S.confirmValiderTout) {
+      const bAnnule = el('button', 'btn', 'Annuler');
+      bAnnule.onclick = () => { S.confirmValiderTout = false; render(); };
+      bar.appendChild(bAnnule);
+    }
+  }
   v.appendChild(bar);
 
-  const f = S.fiches || { en_attente: [], validees: [], rejetees: [] };
+  const f = fx;
   const filtre = liste => liste.filter(x => !S.q || (x.titre + ' ' + x.nom_produit + ' ' + x.id_produit).toLowerCase().includes(S.q));
   const cols = el('div', 'fichecols');
   const defs = [
@@ -1079,6 +1100,16 @@ function notifItem(n) {
            ${n.echouees ? `<span class="chip bad" style="margin-left:6px"><span class="dot2" style="background:var(--bad)"></span>${nfr(n.echouees)} echec(s)</span>` : ''}`}</div>
       <div class="ncontrat">${n.erreur ? esc(n.erreur)
         : `Fiches produits : ${nfr(n.generees)} generee(s), ${nfr(n.echouees)} echec(s), a valider.`}</div>
+      <a class="btn sm nbtn" href="#fiches">Ouvrir la vue Fiches produits</a>
+    </div>`;
+  }
+  if (n.type === 'fiches_validees') {
+    return `<div class="notifitem fiches${nonLu ? ' nonlu' : ''}">
+      <div class="nhead"><span class="ntitle">${ICONS.check} Fiches produits : validation en masse</span>
+        <span class="ntime">${tempsRelatif(n.horodatage)}</span></div>
+      <div class="nrow"><span class="chip ok"><span class="dot2" style="background:var(--ok)"></span>${nfr(n.nb)} fiche(s) validee(s)</span>
+        ${n.echecs ? `<span class="chip bad" style="margin-left:6px"><span class="dot2" style="background:var(--bad)"></span>${nfr(n.echecs)} echec(s)</span>` : ''}</div>
+      <div class="ncontrat">Validation humaine en masse depuis la vue Fiches produits.</div>
       <a class="btn sm nbtn" href="#fiches">Ouvrir la vue Fiches produits</a>
     </div>`;
   }
